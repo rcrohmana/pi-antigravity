@@ -1,6 +1,45 @@
 # pi-antigravity
 
+[![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+![Version](https://img.shields.io/badge/version-0.1.0-green)
+![Pi extension](https://img.shields.io/badge/pi-extension-8A2BE2)
+
 Pi extension for bounded delegation to the official Google Antigravity CLI (`agy`). It exposes four explicit tools: `agy_worker`, `agy_scout`, `agy_delegate`, and `agy_researcher`.
+
+## Agents
+
+| Agent | Description |
+|-------|-------------|
+| `agy_worker` | Implementation work. Edits files, validates, escalates unapproved decisions instead of guessing |
+| `agy_scout` | Fast local codebase recon: relevant files, entry points, data flow, risks |
+| `agy_delegate` | A lightweight general delegate that behaves close to the parent session |
+| `agy_researcher` | Web/docs research with sources and a concise research brief |
+
+## Install
+
+Install into Pi:
+
+```text
+pi install https://github.com/rcrohmana/pi-antigravity
+```
+
+Alternative form:
+
+```text
+pi install git:github.com/rcrohmana/pi-antigravity
+```
+
+Or try it without installing:
+
+```text
+pi -e https://github.com/rcrohmana/pi-antigravity
+```
+
+Prerequisites:
+
+1. Google Antigravity CLI (`agy`) installed and logged in.
+2. The bundled Agy role plugin installed: run `scripts/install-agy-plugin.ps1 -ConfirmInstall` (or `agy plugin install <path-to-agy-plugin>`).
+3. Agy permissions configured per `docs/permissions.md` (headless allow/deny rules for the files, URLs, and commands your roles need).
 
 ## Safety boundary
 
