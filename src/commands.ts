@@ -30,11 +30,11 @@ export function registerAgyCommands(pi: ExtensionAPI): void {
       handler: async (args, ctx: ExtensionContext) => {
         const text = (args ?? "").trim();
         if (!text) {
-          ctx.ui.notify(`Usage: /agy_${role} <tugas>`, "warning");
+          ctx.ui.notify(`Usage: /agy_${role} <task>`, "warning");
           return;
         }
         if (!ctx.isIdle()) {
-          ctx.ui.notify("Agent masih sibuk. Tunggu selesai lalu ulangi.", "warning");
+          ctx.ui.notify("Agent is busy. Wait for it to finish, then try again.", "warning");
           return;
         }
         pi.sendUserMessage(buildRolePrompt(role, text));

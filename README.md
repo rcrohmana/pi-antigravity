@@ -79,18 +79,18 @@ Installation is a separate explicit action and requires `-ConfirmInstall`:
 
 Review `PLAN.md`, `docs/architecture.md`, and `docs/permissions.md` before enabling the extension or installing the plugin.
 
-## Cara pakai cepat
+## Quick start
 
 Slash commands (type in the Pi prompt):
 
 ```text
-/agy_scout <tugas>        Read-only local reconnaissance
-/agy_researcher <tugas>   Read-only web/docs research with cited URLs
-/agy_worker <tugas>       Implementation; asks for confirmation before writes
-/agy_delegate <tugas>     Bounded delegation; asks for confirmation before writes
+/agy_scout <task>        Read-only local reconnaissance
+/agy_researcher <task>   Read-only web/docs research with cited URLs
+/agy_worker <task>       Implementation; asks for confirmation before writes
+/agy_delegate <task>     Bounded delegation; asks for confirmation before writes
 ```
 
-Empty arguments show a usage hint; while the agent is busy you get a "masih sibuk" notice instead of a queued call.
+Empty arguments show a usage hint; while the agent is busy you get an "agent busy" notice instead of a queued call.
 
 Natural language also works: the bundled `agy-scout`, `agy-worker`, `agy-delegate`, and `agy-researcher` skills are auto-discovered from the package `skills/` directory and trigger on requests like "scout this codebase", "research the headless docs", or "implement X with the worker". The skills just instruct the agent to call the matching tool; read-only vs write-gated behavior and the Pi write gate still apply, and bounded output/escalations come straight from the extension.
 
