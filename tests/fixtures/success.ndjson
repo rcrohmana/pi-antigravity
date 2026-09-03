@@ -1,0 +1,4 @@
+{"event":"init","conversation_id":"conv-123","init":{"cwd":"C:\\workspace","tools":["view_file"],"permission_mode":"request-review"}}
+{"event":"step_update","step_update":{"conversation_id":"conv-123","step_index":1,"state":"DONE","step_type":"agent_response","text_delta":"hello ","usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}}}
+{"event":"step_update","step_update":{"conversation_id":"conv-123","step_index":2,"state":"DONE","step_type":"agent_response","text_delta":"world\n"}}
+{"event":"result","result":{"conversation_id":"conv-123","status":"SUCCESS","response":"hello world\n","duration_seconds":0.25,"num_turns":1,"usage":{"input_tokens":10,"output_tokens":4,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":14}}}

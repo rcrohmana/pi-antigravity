@@ -1,0 +1,8 @@
+node_modules/
+*.log
+.tsbuildinfo
+dist/
+
+# OS junk
+Thumbs.db
+.DS_Store
