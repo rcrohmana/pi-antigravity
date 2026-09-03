@@ -1,4 +1,3 @@
-import { StringEnum } from "@earendil-works/pi-ai";
 import type {
   AgentToolResult,
   ExtensionAPI,
@@ -28,8 +27,6 @@ const roleParameters = Type.Object({
   cwd: Type.Optional(Type.String({ description: "Workspace directory, limited to the current Pi workspace or its descendants" })),
   timeout_ms: Type.Optional(Type.Integer({ description: "Parent-side deadline in milliseconds", minimum: 1_000, maximum: 1_800_000, default: 300_000 })),
   conversation_id: Type.Optional(Type.String({ description: "Agy conversation ID for explicit continuation", maxLength: 256 })),
-  model: Type.Optional(Type.String({ description: "Optional documented Agy model slug", maxLength: 256 })),
-  effort: Type.Optional(StringEnum(["low", "medium", "high"] as const, { description: "Optional Agy reasoning effort" })),
 });
 type RoleParameters = Static<typeof roleParameters>;
 
@@ -54,7 +51,7 @@ async function executeRole(
   const files = validateFileHints(params.files);
   const conversationId = validateConversationId(params.conversation_id);
   const cwd = await validateCwd(params.cwd, ctx.cwd, [ctx.cwd]);
-  const gate = await authorizeWriteRole(role, {
+  const gate = await authorizeWriteRole(role, { cwd, task, context, files }, {
     hasUI: ctx.hasUI,
     confirm: ctx.hasUI ? ctx.ui.confirm.bind(ctx.ui) : undefined,
   });
@@ -70,8 +67,7 @@ async function executeRole(
       files,
       timeoutMs: params.timeout_ms,
       conversationId,
-      model: params.model,
-      effort: params.effort,
+      model: ROLE_CONFIGS[role].model,
       mode: ROLE_CONFIGS[role].mode,
       signal,
       onProgress: (progress) => {

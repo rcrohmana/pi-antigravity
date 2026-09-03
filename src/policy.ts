@@ -18,11 +18,55 @@ export interface GateDecision {
   reason?: string;
 }
 
-export function roleCanWrite(role: AgyRole): boolean {
+export interface WriteGateRequest {
+  cwd: string;
+  task: string;
+  context?: string;
+  files?: readonly string[];
+}
+
+export const MAX_CONFIRMATION_TASK_CHARS = 1_000;
+const MAX_CONFIRMATION_CONTEXT_CHARS = 500;
+const MAX_CONFIRMATION_FILE_HINTS = 5;
+const MAX_CONFIRMATION_FILE_HINT_CHARS = 240;
+
+export function roleCanWrite(role: AgyRole): role is Extract<AgyRole, "worker" | "delegate"> {
   return role === "worker" || role === "delegate";
 }
 
-export async function authorizeWriteRole(role: AgyRole, ui: WriteGateUI): Promise<GateDecision> {
+export function buildWriteConfirmationMessage(role: Extract<AgyRole, "worker" | "delegate">, request: WriteGateRequest): string {
+  const sections = [
+    "This starts the official agy CLI with the reviewed inputs below.",
+    `Role: ${role}`,
+    `Workspace (canonical): ${request.cwd}`,
+    "Important: this workspace sets the child process working directory; it is not a filesystem write sandbox.",
+    "Effective write scope is defined by Agy write_file(...) permission rules, which may allow other paths.",
+    `Task (${request.task.length} characters):\n${boundedConfirmationPreview(request.task, MAX_CONFIRMATION_TASK_CHARS)}`,
+  ];
+  if (request.context) {
+    sections.push(
+      `Explicit context (${request.context.length} characters):\n${boundedConfirmationPreview(request.context, MAX_CONFIRMATION_CONTEXT_CHARS)}`,
+    );
+  }
+  if (request.files?.length) {
+    const visibleHints = request.files
+      .slice(0, MAX_CONFIRMATION_FILE_HINTS)
+      .map((file) => `- ${boundedConfirmationPreview(file, MAX_CONFIRMATION_FILE_HINT_CHARS)}`);
+    const omitted = request.files.length - visibleHints.length;
+    sections.push(`File hints (${request.files.length}):\n${visibleHints.join("\n")}${omitted ? `\n[${omitted} additional file hint(s) not shown]` : ""}`);
+  }
+  sections.push(
+    "Actual capabilities:",
+    "- Create and replace file content, subject to Agy write-file permission rules.",
+    "- Run commands only when they match configured Agy command() allow rules.",
+    "- This runner does not use --sandbox.",
+    "- No direct file-deletion or nested-agent capability is available.",
+    "Continue?",
+  );
+  return sections.join("\n\n");
+}
+
+export async function authorizeWriteRole(role: AgyRole, request: WriteGateRequest, ui: WriteGateUI): Promise<GateDecision> {
   if (!roleCanWrite(role)) return { allowed: true };
   if (!ui.hasUI) {
     return {
@@ -33,13 +77,23 @@ export async function authorizeWriteRole(role: AgyRole, ui: WriteGateUI): Promis
   if (!ui.confirm) {
     return { allowed: false, reason: "Pi reported a UI but did not provide a confirmation function" };
   }
-  const approved = await ui.confirm(
-    `Allow Agy ${role} writes?`,
-    "This delegates to the official agy CLI with workspace file-edit capability and possible sandboxed command execution, still subject to Agy's own permission policy. Continue?",
-  );
+  const approved = await ui.confirm(`Allow Agy ${role} writes?`, buildWriteConfirmationMessage(role, request));
   return approved
     ? { allowed: true }
     : { allowed: false, reason: `Agy ${role} delegation rejected by the user` };
+}
+
+function boundedConfirmationPreview(value: string, maxChars: number): string {
+  const sanitized = value
+    .replace(/\r\n?/g, "\n")
+    .replace(/\t/g, "  ")
+    .replace(/[\x00-\x08\x0B-\x1F\x7F-\x9F]/g, (character) => `\\u${character.codePointAt(0)!.toString(16).padStart(4, "0")}`);
+  if (sanitized.length <= maxChars) return sanitized;
+  const marker = `\n[preview truncated: ${value.length} characters total]\n`;
+  const remaining = Math.max(0, maxChars - marker.length);
+  const headChars = Math.ceil(remaining / 2);
+  const tailChars = Math.floor(remaining / 2);
+  return `${sanitized.slice(0, headChars)}${marker}${tailChars ? sanitized.slice(-tailChars) : ""}`;
 }
 
 function comparablePath(value: string): string {

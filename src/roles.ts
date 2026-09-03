@@ -8,6 +8,8 @@ export interface RoleConfig {
   readOnly: boolean;
   mode: "default" | "accept-edits";
   commandExecutionPolicy: "off" | "sandbox";
+  model: string;
+  reasoningTier: "medium" | "high";
   tools: readonly string[];
   summary: string;
 }
@@ -29,6 +31,8 @@ const RESEARCH_TOOLS = [
 export const ROLE_CONFIGS: Record<AgyRole, RoleConfig> = {
   scout: {
     agent: "scout",
+    model: "gemini-3.8-flash-medium",
+    reasoningTier: "medium",
     readOnly: true,
     mode: "default",
     commandExecutionPolicy: "off",
@@ -37,6 +41,8 @@ export const ROLE_CONFIGS: Record<AgyRole, RoleConfig> = {
   },
   researcher: {
     agent: "researcher",
+    model: "gemini-3.8-flash-high",
+    reasoningTier: "high",
     readOnly: true,
     mode: "default",
     commandExecutionPolicy: "off",
@@ -45,6 +51,8 @@ export const ROLE_CONFIGS: Record<AgyRole, RoleConfig> = {
   },
   worker: {
     agent: "worker",
+    model: "gemini-3.8-flash-high",
+    reasoningTier: "high",
     readOnly: false,
     mode: "accept-edits",
     commandExecutionPolicy: "sandbox",
@@ -53,6 +61,8 @@ export const ROLE_CONFIGS: Record<AgyRole, RoleConfig> = {
   },
   delegate: {
     agent: "delegate",
+    model: "gemini-3.8-flash-medium",
+    reasoningTier: "medium",
     readOnly: false,
     mode: "accept-edits",
     commandExecutionPolicy: "sandbox",
