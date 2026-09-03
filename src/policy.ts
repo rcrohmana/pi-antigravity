@@ -8,7 +8,7 @@ export const MAX_CONTEXT_LENGTH = 30_000;
 export const MAX_FILE_HINTS = 100;
 export const MAX_FILE_HINT_LENGTH = 1_000;
 
-export interface WriteGateUI {
+export interface ConfirmationUI {
   hasUI: boolean;
   confirm?: (title: string, message: string) => Promise<boolean>;
 }
@@ -23,6 +23,12 @@ export interface WriteGateRequest {
   task: string;
   context?: string;
   files?: readonly string[];
+}
+
+export interface ResearchContextGateRequest {
+  cwd: string;
+  task: string;
+  context: string;
 }
 
 export const MAX_CONFIRMATION_TASK_CHARS = 1_000;
@@ -66,7 +72,7 @@ export function buildWriteConfirmationMessage(role: Extract<AgyRole, "worker" | 
   return sections.join("\n\n");
 }
 
-export async function authorizeWriteRole(role: AgyRole, request: WriteGateRequest, ui: WriteGateUI): Promise<GateDecision> {
+export async function authorizeWriteRole(role: AgyRole, request: WriteGateRequest, ui: ConfirmationUI): Promise<GateDecision> {
   if (!roleCanWrite(role)) return { allowed: true };
   if (!ui.hasUI) {
     return {
@@ -81,6 +87,33 @@ export async function authorizeWriteRole(role: AgyRole, request: WriteGateReques
   return approved
     ? { allowed: true }
     : { allowed: false, reason: `Agy ${role} delegation rejected by the user` };
+}
+
+export function buildResearchContextConfirmationMessage(request: ResearchContextGateRequest): string {
+  return [
+    "This sends explicit context to the Agy web researcher.",
+    `Workspace (canonical): ${request.cwd}`,
+    `Task (${request.task.length} characters):\n${boundedConfirmationPreview(request.task, MAX_CONFIRMATION_TASK_CHARS)}`,
+    `Explicit context (${request.context.length} characters):\n${boundedConfirmationPreview(request.context, MAX_CONFIRMATION_CONTEXT_CHARS)}`,
+    "Web researcher capabilities:",
+    "- Search the web and fetch page content; it has no local-file or command tools.",
+    "- URL fetches are controlled by the owner's Agy read_url(...) rules.",
+    "- If broad access such as read_url(*) is configured, untrusted web content could cause this context to be sent to an arbitrary site.",
+    "Do not approve secrets, credentials, or private data. Continue?",
+  ].join("\n\n");
+}
+
+export async function authorizeResearchContext(request: ResearchContextGateRequest, ui: ConfirmationUI): Promise<GateDecision> {
+  if (!ui.hasUI) {
+    return { allowed: false, reason: "researcher explicit context is denied in headless mode because Pi has no interactive UI" };
+  }
+  if (!ui.confirm) {
+    return { allowed: false, reason: "Pi reported a UI but did not provide a confirmation function" };
+  }
+  const approved = await ui.confirm("Allow Agy researcher context?", buildResearchContextConfirmationMessage(request));
+  return approved
+    ? { allowed: true }
+    : { allowed: false, reason: "Agy researcher context delegation rejected by the user" };
 }
 
 function boundedConfirmationPreview(value: string, maxChars: number): string {

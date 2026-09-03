@@ -5,7 +5,9 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  authorizeResearchContext,
   authorizeWriteRole,
+  buildResearchContextConfirmationMessage,
   buildWriteConfirmationMessage,
   isWithinPath,
   MAX_CONFIRMATION_TASK_CHARS,
@@ -62,6 +64,34 @@ test("write confirmation previews reviewed inputs and actual capabilities", asyn
 
   assert.deepEqual(await authorizeWriteRole("scout", request, { hasUI: false }), { allowed: true });
   assert.deepEqual(await authorizeWriteRole("researcher", request, { hasUI: false }), { allowed: true });
+});
+
+test("researcher explicit context requires an interactive disclosure", async () => {
+  const request = {
+    cwd: "C:\\workspace",
+    task: "Compare two methods.",
+    context: "Selected non-secret evidence from the parent.",
+  };
+  let title = "";
+  let message = "";
+  const allowed = await authorizeResearchContext(request, {
+    hasUI: true,
+    confirm: async (receivedTitle, receivedMessage) => {
+      title = receivedTitle;
+      message = receivedMessage;
+      return true;
+    },
+  });
+  assert.deepEqual(allowed, { allowed: true });
+  assert.equal(title, "Allow Agy researcher context?");
+  assert.match(message, /no local-file or command tools/);
+  assert.match(message, /read_url\(\*\)/);
+  assert.match(message, /Do not approve secrets/);
+  assert.match(buildResearchContextConfirmationMessage(request), /Explicit context \(45 characters\):/);
+
+  const denied = await authorizeResearchContext(request, { hasUI: false });
+  assert.equal(denied.allowed, false);
+  assert.match(denied.reason, /headless/);
 });
 
 test("cwd is canonicalized and restricted to the workspace", async () => {

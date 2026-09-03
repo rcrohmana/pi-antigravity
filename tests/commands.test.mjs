@@ -7,7 +7,7 @@ import { MAX_COMMAND_ARGS_CHARS, boundCommandArgs } from "../src/schemas.ts";
 
 test("buildRolePrompt frames each role deterministically", () => {
   assert.match(buildRolePrompt("scout", "find entry points"), /^Use the agy_scout tool for the following read-only local reconnaissance task\. Do not modify anything\. Report findings and risks\.\n\nTASK:\nfind entry points$/);
-  assert.match(buildRolePrompt("researcher", "headless docs"), /^Use the agy_researcher tool to research the following question with cited sources\. Read-only; do not modify files\.\n\nTASK:\nheadless docs$/);
+  assert.match(buildRolePrompt("researcher", "headless docs"), /^Use the web-only agy_researcher tool to research the following question with cited sources\. Do not supply file hints or ask it to inspect local files\.\n\nTASK:\nheadless docs$/);
   assert.match(buildRolePrompt("worker", "fix the bug"), /^Use the agy_worker tool to implement the following task\. Expect a confirmation gate for writes\.\n\nTASK:\nfix the bug$/);
   assert.match(buildRolePrompt("delegate", "summarize"), /^Use the agy_delegate tool for the following bounded task\.\n\nTASK:\nsummarize$/);
 });

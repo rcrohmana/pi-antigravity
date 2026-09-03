@@ -10,7 +10,7 @@ Headless permission behavior (verified on CLI 1.1.25; details in `docs/permissio
 
 The extension never reads Agy credentials or serializes the Pi conversation. Only `task`, explicitly supplied `context`, and explicitly supplied file hints are sent. The role's execution mode and agent selection are fixed by extension code rather than task text. Scout and researcher run in Agy's flagless default mode (the `--mode` flag is omitted entirely because CLI 1.1.25 only accepts `accept-edits` or `plan`); worker and delegate use `--mode accept-edits` after Pi confirmation.
 
-`worker` and `delegate` are write-capable and require a Pi UI confirmation; they are denied when `ctx.hasUI` is false. `scout` and `researcher` are read-only by both Pi route and Agy plugin tool list. All four plugin agents set `inheritCustomizations: false` so ambient skills, rules, MCP servers, and nested-agent customizations cannot silently expand the role contract.
+`worker` and `delegate` are write-capable and require a Pi UI confirmation; they are denied when `ctx.hasUI` is false. Scout is local-only. Researcher is web-only (`search_web` and `read_url_content`) and rejects file hints, so it cannot read local files even when Agy permissions allow other roles to do so. Supplying explicit context to researcher requires a Pi UI confirmation and is denied headlessly because that context could be exposed through a broad web-fetch policy. All four plugin agents set `inheritCustomizations: false` so ambient skills, rules, MCP servers, and nested-agent customizations cannot silently expand the role contract.
 
 ## Slash commands and skills
 

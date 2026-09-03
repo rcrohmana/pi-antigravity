@@ -1,7 +1,7 @@
 # pi-antigravity
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
-![Version](https://img.shields.io/badge/version-0.1.1-green)
+![Version](https://img.shields.io/badge/version-0.1.2-green)
 ![Pi extension](https://img.shields.io/badge/pi-extension-8A2BE2)
 
 Pi extension for bounded delegation to the official Google Antigravity CLI (`agy`). It exposes four explicit tools: `agy_worker`, `agy_scout`, `agy_delegate`, and `agy_researcher`.
@@ -13,7 +13,7 @@ Pi extension for bounded delegation to the official Google Antigravity CLI (`agy
 | `agy_worker` | Implementation work. Edits files, validates, escalates unapproved decisions instead of guessing |
 | `agy_scout` | Fast local codebase recon: relevant files, entry points, data flow, risks |
 | `agy_delegate` | A lightweight general delegate that behaves close to the parent session |
-| `agy_researcher` | Web/docs research with sources and a concise research brief |
+| `agy_researcher` | Web-only research with sources and a concise research brief |
 
 ### Agent capabilities
 
@@ -22,7 +22,7 @@ This table describes each role's Agy tool allow-list. Actual file, URL, and comm
 | Agent | Local inspection | Web research | Create or edit files | Run commands | Notes |
 |-------|------------------|--------------|----------------------|--------------|-------|
 | `agy_scout` | Yes — list directories, find files, search text, and view files | No | No | No | Read-only local reconnaissance. |
-| `agy_researcher` | Yes — same local inspection tools as scout | Yes — web search and page-content fetch | No | No | Read-only research; cite source URLs. The owner decides which URLs may be fetched. |
+| `agy_researcher` | No | Yes — web search and page-content fetch | No | No | Web-only research; cite source URLs. Explicit context needs UI confirmation and is denied headlessly. |
 | `agy_worker` | Yes | No | Yes — create and replace file content | Yes — only owner-approved command rules | For bounded implementation. Pi UI confirmation is required before it starts. |
 | `agy_delegate` | Yes | No | Yes — create and replace file content | Yes — only owner-approved command rules | Lightweight bounded execution. Pi UI confirmation is required before it starts. |
 
@@ -71,7 +71,7 @@ Prerequisites:
 - Executable lookup is `AGY_CLI_PATH`, then `PATH`, then `%LOCALAPPDATA%\\agy\\bin\\agy.exe`.
 - Pi sends the task plus explicitly supplied context/file hints, never the full conversation or auth material in the prompt. The Agy child inherits the parent environment; treat that as a trust boundary, especially for commands.
 - `worker` and `delegate` require confirmation in a Pi UI and are denied when `ctx.hasUI` is false. The confirmation shows the role, canonical workspace, bounded task/context previews, file hints, and actual write/command capabilities; the runner does not use `--sandbox`. The canonical `cwd` is the child process working directory, not a filesystem write sandbox; Agy `write_file(...)` permission rules define the effective write scope.
-- `scout` and `researcher` are read-only by their Agy tool allow-lists.
+- `scout` and `researcher` are read-only by their Agy tool allow-lists. Scout is local-only; researcher is web-only and rejects file hints. When explicit context is supplied to researcher, a Pi UI confirmation is required and headless calls are denied.
 - No route uses `--dangerously-skip-permissions`; Agy's own permission rules remain authoritative.
 - Child cancellation and deadlines terminate the process; output and diagnostics are bounded.
 

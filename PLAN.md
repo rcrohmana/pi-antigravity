@@ -2,7 +2,7 @@
 
 **Project:** `pi-antigravity`
 **Location:** `C:\Users\<you>\Agent_Tools\pi-antigravity`
-**Status:** Core implementation + slash commands/skills and offline/unit validation complete. Plugin installed, Pi extension enabled, and read-only/command smoke tests executed under project-owner approval. Write rules for the four approved roots are live; broad researcher web fetch (`read_url(*)` + loopback/metadata deny guards) verified live; further command() rule additions and any delegate live test remain pending explicit approval.
+**Status:** Core implementation + slash commands/skills and offline/unit validation complete. Plugin installed, Pi extension enabled, and read-only/command smoke tests executed under project-owner approval. Write rules for the four approved roots are live; researcher is web-only with broad web fetch (`read_url(*)` + loopback/metadata deny guards) verified live, while broad home-directory read access is removed; further command() rule additions and any delegate live test remain pending explicit approval.
 **Owner:** riancr
 
 ## 1. Goal

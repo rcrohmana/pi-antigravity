@@ -11,6 +11,7 @@ import { formatModelVisibleResponse, runAgy } from "./src/runner.ts";
 import { registerAgyCommands } from "./src/commands.ts";
 import { ROLE_CONFIGS, ROLES, type AgyRole } from "./src/roles.ts";
 import {
+  authorizeResearchContext,
   authorizeWriteRole,
   validateContext,
   validateConversationId,
@@ -49,6 +50,9 @@ async function executeRole(
   const task = validateTask(params.task);
   const context = validateContext(params.context);
   const files = validateFileHints(params.files);
+  if (role === "researcher" && files?.length) {
+    throw new Error("agy_researcher does not accept file hints because it has no local-file tools");
+  }
   const conversationId = validateConversationId(params.conversation_id);
   const cwd = await validateCwd(params.cwd, ctx.cwd, [ctx.cwd]);
   const gate = await authorizeWriteRole(role, { cwd, task, context, files }, {
@@ -56,6 +60,13 @@ async function executeRole(
     confirm: ctx.hasUI ? ctx.ui.confirm.bind(ctx.ui) : undefined,
   });
   if (!gate.allowed) throw new Error(gate.reason ?? "Agy delegation denied by policy");
+  if (role === "researcher" && context) {
+    const researchGate = await authorizeResearchContext({ cwd, task, context }, {
+      hasUI: ctx.hasUI,
+      confirm: ctx.hasUI ? ctx.ui.confirm.bind(ctx.ui) : undefined,
+    });
+    if (!researchGate.allowed) throw new Error(researchGate.reason ?? "Agy researcher context delegation denied by policy");
+  }
 
   if (ctx.hasUI) ctx.ui.setStatus("pi-antigravity", `${role} · starting`);
   try {

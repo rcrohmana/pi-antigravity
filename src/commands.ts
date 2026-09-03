@@ -9,7 +9,7 @@ const ROLE_FRAMING: Record<AgyRole, string> = {
   scout:
     "Use the agy_scout tool for the following read-only local reconnaissance task. Do not modify anything. Report findings and risks.",
   researcher:
-    "Use the agy_researcher tool to research the following question with cited sources. Read-only; do not modify files.",
+    "Use the web-only agy_researcher tool to research the following question with cited sources. Do not supply file hints or ask it to inspect local files.",
   worker:
     "Use the agy_worker tool to implement the following task. Expect a confirmation gate for writes.",
   delegate: "Use the agy_delegate tool for the following bounded task.",

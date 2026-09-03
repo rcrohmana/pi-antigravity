@@ -23,7 +23,6 @@ const WRITE_TOOLS = [
   "run_command",
 ] as const;
 const RESEARCH_TOOLS = [
-  ...READ_TOOLS,
   "search_web",
   "read_url_content",
 ] as const;
@@ -47,7 +46,7 @@ export const ROLE_CONFIGS: Record<AgyRole, RoleConfig> = {
     mode: "default",
     commandExecutionPolicy: "off",
     tools: RESEARCH_TOOLS,
-    summary: "Read-only documentation and web research with source URLs and a concise brief.",
+    summary: "Web-only research with source URLs and a concise brief; it has no local-file tools.",
   },
   worker: {
     agent: "worker",

@@ -8,7 +8,7 @@ description: Web and documentation research via the Agy researcher role. Use whe
 When the user asks for research with cited sources:
 
 1. Call the `agy_researcher` tool with the question as `task`.
-2. Read-only: no file edits, no command execution; web access is limited by Agy allow rules.
+2. Web-only: no local-file, edit, or command tools. Web access is limited by Agy allow rules; do not supply file hints.
 3. Require cited URLs in the result; report escalation results verbatim.
 4. Output is bounded by the extension.
 
