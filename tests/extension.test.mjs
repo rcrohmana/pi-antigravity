@@ -52,7 +52,7 @@ test("plugin definitions use documented tools and forbid nested delegation", asy
     assert.match(text, /^inheritCustomizations: false$/m);
   }
   const researcher = await readFile(new URL("../agy-plugin/agents/researcher.md", import.meta.url), "utf8");
-  assert.match(researcher, /^tools:\n  - search_web\n  - read_url_content$/m);
+  assert.match(researcher, /^tools:\r?\n  - search_web\r?\n  - read_url_content\r?$/m);
   assert.match(researcher, /# Research strategy/);
   assert.match(researcher, /## Gaps and next steps/);
 });
