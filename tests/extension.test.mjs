@@ -41,7 +41,7 @@ test("role routes have explicit read/write capability boundaries", async () => {
   assert.match(roleSource, /agy_researcher does not accept file hints/);
   assert.match(roleSource, /validateCwd/);
   // A-05: hints are validated against the resolved cwd, so cwd must be known first.
-  assert.match(roleSource, /const cwd = await validateCwd\(params\.cwd, ctx\.cwd, \[ctx\.cwd\]\);\n  const files = validateFileHints\(params\.files, cwd\);/);
+  assert.match(roleSource, /const cwd = await validateCwd\(params\.cwd, ctx\.cwd, \[ctx\.cwd\]\);\r?\n  const files = validateFileHints\(params\.files, cwd\);/);
   assert.match(roleSource, /model: ROLE_CONFIGS\[role\]\.model/);
   assert.doesNotMatch(roleSource, /model:\s*params\.model/);
   const runner = await readFile(new URL("../src/runner.ts", import.meta.url), "utf8");
