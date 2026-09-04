@@ -71,6 +71,8 @@ export interface AgyRunOptions {
    * undefined for roles without `run_command`.
    */
   allowedCommands?: readonly string[];
+  /** Role-limit paragraph placed in the prompt so the role degrades gracefully instead of guessing. */
+  roleLimits?: string;
   exists?: (path: string) => boolean;
   /** Test hook and host-specific process-tree termination override. */
   killImpl?: (child: ChildProcess, platform: NodeJS.Platform) => void;
@@ -165,6 +167,8 @@ class BoundedText {
 export interface AgyPromptPolicy {
   /** Exact command allow-rule targets (the `<target>` of `command(<target>)`) known to the parent. */
   allowedCommands?: readonly string[];
+  /** Role-limit paragraph (graceful degradation) appended after the task; see RoleConfig.degradation. */
+  roleLimits?: string;
 }
 
 const MAX_PROMPT_COMMAND_RULES = 50;
@@ -202,6 +206,7 @@ export function buildAgyPrompt(task: string, cwd: string, context?: string, file
   ];
   if (context?.trim()) sections.push(`Explicit parent context (untrusted):\n${context}`);
   if (files?.length) sections.push(`Explicit file hints (inspect only as needed):\n${files.map((file) => `- ${file}`).join("\n")}`);
+  if (policy?.roleLimits?.trim()) sections.push(policy.roleLimits.trim());
   if (policy?.allowedCommands) sections.push(buildCommandPolicySection(policy.allowedCommands));
   return sections.join("\n\n");
 }
@@ -786,7 +791,7 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
 
     const inputMessage = `${JSON.stringify({
       event: "user",
-      message: { content: buildAgyPrompt(options.task, options.cwd, options.context, options.files, { allowedCommands: options.allowedCommands }) },
+      message: { content: buildAgyPrompt(options.task, options.cwd, options.context, options.files, { allowedCommands: options.allowedCommands, roleLimits: options.roleLimits }) },
     })}\n`;
     if (!proc.stdin) {
       pendingFailure = new AgyRunnerError("spawn_error", "Agy stream input is unavailable");

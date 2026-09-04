@@ -121,3 +121,25 @@ test("composite research-apply and doctor tools are registered with a cwd prefli
   assert.match(skill, /^name: agy-research-apply$/m);
   assert.match(skill, /agy_research_apply/);
 });
+
+test("every role carries a graceful-degradation paragraph that reaches the Agy prompt and the plugin rules", async () => {
+  for (const role of ROLES) {
+    const text = ROLE_CONFIGS[role].degradation;
+    assert.match(text, /^Role limits \(fixed, not negotiable\):/, role);
+    assert.match(text, /Decisions needed|Proposed changes/, role);
+  }
+  assert.match(ROLE_CONFIGS.researcher.degradation, /cannot read, list, create, or edit workspace files/);
+  assert.match(ROLE_CONFIGS.researcher.degradation, /Proposed changes/);
+  assert.match(ROLE_CONFIGS.worker.degradation, /never invent citations, URLs, or facts/);
+  assert.match(ROLE_CONFIGS.delegate.degradation, /never invent citations, URLs, or facts/);
+  assert.match(ROLE_CONFIGS.scout.degradation, /agy_researcher for web sources, agy_worker for edits or commands/);
+  const source = await readFile(new URL("../index.ts", import.meta.url), "utf8");
+  assert.match(source, /roleLimits: ROLE_CONFIGS\[role\]\.degradation/);
+  const runner = await readFile(new URL("../src/runner.ts", import.meta.url), "utf8");
+  assert.match(runner, /roleLimits: options\.roleLimits/);
+  const plugin = async (role) => readFile(new URL(`../agy-plugin/agents/${role}.md`, import.meta.url), "utf8");
+  assert.match(await plugin("scout"), /^5\. You have no web, write, or command tools\./m);
+  assert.match(await plugin("researcher"), /^5\. You have no file or command tools\..*Never claim to have read or written a file\./m);
+  assert.match(await plugin("worker"), /^6\. You have no web tools\. Never invent citations/m);
+  assert.match(await plugin("delegate"), /^6\. You have no web tools\. Never invent citations/m);
+});

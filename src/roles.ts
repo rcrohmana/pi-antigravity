@@ -13,6 +13,13 @@ export interface RoleConfig {
   tools: readonly string[];
   summary: string;
   boundary: string;
+  /**
+   * Graceful-degradation rule sent to the model in every task prompt for
+   * this role. It tells the role what to do when the task needs a tool it
+   * does not have, so it returns a usable partial result instead of
+   * guessing, fabricating, or dying on an auto-denied call.
+   */
+  degradation: string;
 }
 
 const READ_TOOLS = ["list_dir", "find_by_name", "grep_search", "view_file"] as const;
@@ -39,6 +46,8 @@ export const ROLE_CONFIGS: Record<AgyRole, RoleConfig> = {
     tools: READ_TOOLS,
     summary: "Read-only local reconnaissance: files, entry points, data flow, risks, and questions.",
     boundary: "Local read-only inspection only (list/find/grep/view). No web tools, no file writes, and no commands. Cannot fetch URLs.",
+    degradation:
+      "Role limits (fixed, not negotiable): local read-only inspection only. You cannot fetch URLs, write files, or run commands. If the task asks for any of these, do not attempt it and do not guess the outcome: report what you inspected, then list the unmet parts under \"Decisions needed\" naming the role that can do them (agy_researcher for web sources, agy_worker for edits or commands).",
   },
   researcher: {
     agent: "researcher",
@@ -50,6 +59,8 @@ export const ROLE_CONFIGS: Record<AgyRole, RoleConfig> = {
     tools: RESEARCH_TOOLS,
     summary: "Web-only research with source URLs and a concise brief; it has no local-file tools.",
     boundary: "Web-only (search_web, read_url_content) with cited URLs. No local file access at all: cannot read, list, edit, or create workspace files, and cannot run commands. Never send it a task that mentions editing or reading a file.",
+    degradation:
+      "Role limits (fixed, not negotiable): web-only. You cannot read, list, create, or edit workspace files and cannot run commands. If the task asks you to inspect or change a file, do not attempt it and do not pretend you did: do the research part, then put the full proposed file content or edit under a \"Proposed changes\" heading and state that agy_worker must apply it.",
   },
   worker: {
     agent: "worker",
@@ -61,6 +72,8 @@ export const ROLE_CONFIGS: Record<AgyRole, RoleConfig> = {
     tools: WRITE_TOOLS,
     summary: "Bounded implementation and explicitly allowed validation in the requested workspace.",
     boundary: "Reads, creates, and edits workspace files; runs only owner-approved commands listed in its Command policy. No web tools: cannot search the web or fetch URLs. For tasks that need web research and file edits, run agy_researcher first and pass its brief as context to agy_worker.",
+    degradation:
+      "Role limits (fixed, not negotiable): no web tools. You cannot search the web or fetch URLs, and you may run only the commands in the Command policy. If the task needs online sources, never invent citations, URLs, or facts: complete every part that needs only the workspace and the supplied context, then list the exact research questions under \"Decisions needed\" for agy_researcher. If a step needs a denied tool, skip it and report it the same way.",
   },
   delegate: {
     agent: "delegate",
@@ -72,6 +85,8 @@ export const ROLE_CONFIGS: Record<AgyRole, RoleConfig> = {
     tools: WRITE_TOOLS,
     summary: "Lightweight bounded execution without nested Antigravity delegation.",
     boundary: "Same tools as worker (files and owner-approved commands, no web); lighter, medium reasoning, for small bounded tasks. No web tools: cannot search the web or fetch URLs. For tasks that need web research and file edits, run agy_researcher first and pass its brief as context to agy_delegate.",
+    degradation:
+      "Role limits (fixed, not negotiable): no web tools. You cannot search the web or fetch URLs, and you may run only the commands in the Command policy. If the task needs online sources, never invent citations, URLs, or facts: complete every part that needs only the workspace and the supplied context, then list the exact research questions under \"Decisions needed\" for agy_researcher. If a step needs a denied tool, skip it and report it the same way.",
   },
 };
 

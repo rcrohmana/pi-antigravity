@@ -134,6 +134,7 @@ async function executeRole(
       model: ROLE_CONFIGS[role].model,
       mode: ROLE_CONFIGS[role].mode,
       allowedCommands: commandPolicy?.commands,
+      roleLimits: ROLE_CONFIGS[role].degradation,
       signal,
       onProgress: (progress) => {
         const text = formatProgress(role, progress.stepType, progress.textDelta);

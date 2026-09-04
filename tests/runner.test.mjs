@@ -1081,3 +1081,15 @@ test("a CANCELED result with stderr-only denial evidence rejects with permission
       /Generic allow rule form/.test(error.message),
   );
 });
+
+test("buildAgyPrompt places the role-limits paragraph after the task and before the command policy", async () => {
+  const { buildAgyPrompt } = await import("../src/runner.ts");
+  const limits = "Role limits (fixed, not negotiable): no web tools.";
+  const prompt = buildAgyPrompt("do x", "C:/ws", undefined, undefined, { roleLimits: limits, allowedCommands: ["git status"] });
+  const taskIndex = prompt.indexOf("Task:\ndo x");
+  const limitsIndex = prompt.indexOf(limits);
+  const policyIndex = prompt.indexOf("Command policy");
+  assert.ok(taskIndex > -1 && limitsIndex > taskIndex && policyIndex > limitsIndex);
+  assert.equal(buildAgyPrompt("do x", "C:/ws", undefined, undefined, { roleLimits: "   " }).includes("Role limits"), false);
+  assert.equal(buildAgyPrompt("do x", "C:/ws").includes("Role limits"), false);
+});
