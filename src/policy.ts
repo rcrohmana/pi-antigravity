@@ -149,14 +149,33 @@ export function validateContext(context: string | undefined): string | undefined
   return context;
 }
 
-export function validateFileHints(files: readonly string[] | undefined): string[] | undefined {
+// C0 control characters (including NUL, CR, LF, TAB) and DEL. A file hint is a
+// path, and a path never contains these; rejecting them keeps every hint on
+// its own prompt line so a hint cannot smuggle extra instructions.
+const FILE_HINT_CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+
+/**
+ * Validate the `files` tool parameter. Hints stay as supplied (relative or
+ * absolute) so the model sees them as written, but each one must be a single
+ * printable line and, when `cwd` is given, must resolve to `cwd` or a
+ * descendant of it: the prompt already tells Agy to stay inside the selected
+ * workspace and Agy's own read_file/write_file rules enforce it, so a hint
+ * pointing elsewhere could only burn quota on an auto-denied read.
+ */
+export function validateFileHints(files: readonly string[] | undefined, cwd?: string): string[] | undefined {
   if (files === undefined) return undefined;
   if (files.length > MAX_FILE_HINTS) throw new Error(`files exceeds ${MAX_FILE_HINTS} entries`);
   return files.map((file) => {
-    if (typeof file !== "string" || file.trim() === "" || file.includes("\0")) {
-      throw new Error("files must contain non-empty paths without NUL characters");
+    if (typeof file !== "string" || file.trim() === "") {
+      throw new Error("files must contain non-empty paths");
+    }
+    if (FILE_HINT_CONTROL_CHARS.test(file)) {
+      throw new Error("files must not contain control characters (newlines, tabs, NUL)");
     }
     if (file.length > MAX_FILE_HINT_LENGTH) throw new Error(`file hint exceeds ${MAX_FILE_HINT_LENGTH} characters`);
+    if (cwd !== undefined && !isWithinPath(cwd, resolve(cwd, file))) {
+      throw new Error(`file hint is outside the selected workspace: ${file}`);
+    }
     return file;
   });
 }

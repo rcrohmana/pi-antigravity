@@ -4,6 +4,7 @@ import { Type, type Static } from "typebox";
 import { boundCommandArgs, boundPiOutput, type AgyToolDetails } from "./schemas.ts";
 import {
   validateContext,
+  validateCwd,
   validateFileHints,
   validateTask,
   type ConfirmationUI,
@@ -182,7 +183,11 @@ export async function executeResearchApply(
   const question = validateTask(params.question);
   const applyTask = validateTask(params.apply_task);
   const context = validateContext(params.context);
-  const files = validateFileHints(params.files);
+  // Resolve cwd now so a bad workspace or an out-of-workspace hint fails
+  // before the confirmation and before the researcher leg spends quota. Each
+  // leg re-validates against params.cwd on its own.
+  const cwd = await validateCwd(params.cwd, ctx.cwd, [ctx.cwd]);
+  const files = validateFileHints(params.files, cwd);
 
   const gate = await authorizeResearchApply({
     hasUI: ctx.hasUI,

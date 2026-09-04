@@ -71,12 +71,12 @@ async function executeRole(
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: ToolDetails }> {
   const task = validateTask(params.task);
   const context = validateContext(params.context);
-  const files = validateFileHints(params.files);
+  const conversationId = validateConversationId(params.conversation_id);
+  const cwd = await validateCwd(params.cwd, ctx.cwd, [ctx.cwd]);
+  const files = validateFileHints(params.files, cwd);
   if (role === "researcher" && files?.length) {
     throw new Error("agy_researcher does not accept file hints because it has no local-file tools");
   }
-  const conversationId = validateConversationId(params.conversation_id);
-  const cwd = await validateCwd(params.cwd, ctx.cwd, [ctx.cwd]);
   // Preflight (item 6): headless Agy auto-denies every local file tool unless a
   // read_file(...) allow rule covers the path, so a local-file role without
   // coverage would only burn quota. Refuse before any confirmation or spawn.

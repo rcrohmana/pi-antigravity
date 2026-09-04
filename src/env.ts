@@ -10,7 +10,8 @@
 
 const SUPPORTED_AGY_PLATFORMS: readonly NodeJS.Platform[] = Object.freeze<NodeJS.Platform[]>(["win32", "linux", "darwin"]);
 
-// Section 5.2 of docs/A-04-child-environment-isolation-spec.md, including the
+// Windows allow-list (see "Child environment isolation" in
+// docs/architecture.md), including the
 // owner-approved identity variables LOGONSERVER, SYSTEMDRIVE, USERDOMAIN, and
 // USERNAME. Canonical output spellings only; the child must never receive
 // duplicate casings.

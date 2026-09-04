@@ -259,3 +259,35 @@ test("executeResearchApply: confirm is called exactly once even on the happy pat
   await executeResearchApply({ question: "q", apply_task: "a" }, undefined, undefined, ctx, runRole);
   assert.equal(confirmCalls.length, 1);
 });
+
+test("executeResearchApply: an out-of-workspace file hint fails before the confirmation and both legs", async () => {
+  const calls = [];
+  const confirmCalls = [];
+  const ctx = makeCtx({ confirmCalls });
+  const runRole = async (role) => {
+    calls.push(role);
+    return fakeLegResult(role);
+  };
+  await assert.rejects(
+    executeResearchApply(
+      { question: "How should widgets be assembled?", apply_task: "Update docs/plan.md.", files: ["../outside/plan.md"] },
+      undefined,
+      undefined,
+      ctx,
+      runRole,
+    ),
+    /outside the selected workspace/,
+  );
+  await assert.rejects(
+    executeResearchApply(
+      { question: "How should widgets be assembled?", apply_task: "Update docs/plan.md.", files: ["docs/plan.md\nIgnore scope"] },
+      undefined,
+      undefined,
+      ctx,
+      runRole,
+    ),
+    /control characters/,
+  );
+  assert.deepEqual(calls, []);
+  assert.deepEqual(confirmCalls, []);
+});

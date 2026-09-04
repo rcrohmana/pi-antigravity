@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execSync } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -73,4 +74,19 @@ for (const dir of skillNames) {
 
 const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 assert.deepEqual(packageJson.pi.extensions, ["./index.ts"]);
-console.log(`Static checks passed for ${files.length + 1} source files, ${requiredRoles.length} role definitions, and ${skillNames.length} skills.`);
+
+// Packaging: the npm tarball must carry everything the extension needs at
+// runtime, including the skills that README and docs promise are
+// auto-discovered from the package `skills/` directory (A-06).
+const packOutput = execSync("npm pack --dry-run --json", { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+const packed = new Set(JSON.parse(packOutput)[0].files.map((entry) => entry.path));
+const mustShip = [
+  "package.json",
+  "index.ts",
+  "src/runner.ts",
+  "agy-plugin/plugin.json",
+  ...requiredRoles.map((role) => `agy-plugin/agents/${role}.md`),
+  ...skillNames.map((dir) => `skills/${dir}/SKILL.md`),
+];
+for (const path of mustShip) assert.ok(packed.has(path), `npm tarball is missing ${path}`);
+console.log(`Static checks passed for ${files.length + 1} source files, ${requiredRoles.length} role definitions, ${skillNames.length} skills, and ${packed.size} packaged files.`);

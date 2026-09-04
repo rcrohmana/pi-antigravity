@@ -9,6 +9,7 @@
     "index.ts",
     "src/",
     "agy-plugin/",
+    "skills/",
     "scripts/",
     "README.md",
     "PLAN.md",

@@ -205,7 +205,9 @@ export function buildAgyPrompt(task: string, cwd: string, context?: string, file
     `Task:\n${task}`,
   ];
   if (context?.trim()) sections.push(`Explicit parent context (untrusted):\n${context}`);
-  if (files?.length) sections.push(`Explicit file hints (inspect only as needed):\n${files.map((file) => `- ${file}`).join("\n")}`);
+  // Hints are validated to be single printable lines; JSON-quoting them is
+  // defense in depth so one hint can never render as more than one line.
+  if (files?.length) sections.push(`Explicit file hints (inspect only as needed):\n${files.map((file) => `- ${JSON.stringify(file)}`).join("\n")}`);
   if (policy?.roleLimits?.trim()) sections.push(policy.roleLimits.trim());
   if (policy?.allowedCommands) sections.push(buildCommandPolicySection(policy.allowedCommands));
   return sections.join("\n\n");
