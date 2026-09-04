@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": [
+    "src/runner.ts",
+    "src/env.ts",
+    "src/agy-settings.ts",
+    "src/schemas.ts",
+    "src/policy.ts",
+    "src/roles.ts"
+  ]
+}

@@ -32,6 +32,20 @@ const runnerSource = await readFile(join(root, "src/runner.ts"), "utf8");
 assert.match(runnerSource, /shell:\s*false/);
 assert.doesNotMatch(runnerSource, /push\("--sandbox"\)/);
 
+// A-04 defense-in-depth environment checks (spec section 9.5.3). Regex checks
+// are secondary: the fake-spawn and helper tests remain the authoritative
+// immediate-boundary proof.
+const envModuleSource = await readFile(join(root, "src/env.ts"), "utf8");
+for (const [name, text] of [["src/runner.ts", runnerSource], ["src/env.ts", envModuleSource]]) {
+  assert.doesNotMatch(text, /env:\s*process\.env/, `${name}: direct env: process.env pass-through`);
+  assert.doesNotMatch(text, /env:\s*parentEnv\b/, `${name}: direct env: parentEnv pass-through`);
+  assert.doesNotMatch(text, /\.\.\.\s*\w*[Ee]nv/, `${name}: object-spread environment construction`);
+  assert.doesNotMatch(text, /Object\.assign\s*\(\s*\w*[Ee]nv/, `${name}: Object.assign environment construction`);
+  assert.doesNotMatch(text, /\bdelete\s+\w+\[?/, `${name}: delete-based environment mutation`);
+}
+assert.match(runnerSource, /env:\s*childEnv/, "runner must pass a constructed child environment to spawn");
+assert.match(envModuleSource, /Object\.create\(null\)/, "child environment must use a null-prototype object");
+
 // Slash commands: wired in index.ts, one per role, with usage + busy guards.
 const indexSource = await readFile(join(root, "index.ts"), "utf8");
 assert.match(indexSource, /registerAgyCommands\(pi\)/);
@@ -59,4 +73,4 @@ for (const dir of skillNames) {
 
 const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 assert.deepEqual(packageJson.pi.extensions, ["./index.ts"]);
-console.log(`Static checks passed for ${files.length} source files, ${requiredRoles.length} role definitions, and ${skillNames.length} skills.`);
+console.log(`Static checks passed for ${files.length + 1} source files, ${requiredRoles.length} role definitions, and ${skillNames.length} skills.`);

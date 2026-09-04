@@ -15,7 +15,7 @@ import {
   validateTask,
 } from "../src/policy.ts";
 
-test("write confirmation previews reviewed inputs and actual capabilities", async () => {
+test("write confirmation is compact but still discloses its capabilities", async () => {
   const request = {
     cwd: "C:\\workspace\\canonical-child",
     task: "Update the selected file only.",
@@ -37,26 +37,15 @@ test("write confirmation previews reviewed inputs and actual capabilities", asyn
   assert.deepEqual(allowed, { allowed: true });
   assert.equal(confirmations, 1);
   assert.equal(confirmationTitle, "Allow Agy worker writes?");
-  assert.match(confirmationMessage, /Workspace \(canonical\): C:\\workspace\\canonical-child/);
-  assert.match(confirmationMessage, /not a filesystem write sandbox/);
-  assert.match(confirmationMessage, /Agy write_file\(\.\.\.\) permission rules/);
-  assert.match(confirmationMessage, /Task \(30 characters\):\nUpdate the selected file only\./);
-  assert.match(confirmationMessage, /Explicit context \(48 characters\):/);
-  assert.match(confirmationMessage, /File hints \(2\):/);
-  assert.match(confirmationMessage, /Create and replace file content/);
-  assert.match(confirmationMessage, /command\(\) allow rules/);
-  assert.match(confirmationMessage, /does not use --sandbox/);
-  assert.doesNotMatch(confirmationMessage, /sandboxed command execution/);
-
-  const longMessage = buildWriteConfirmationMessage("delegate", {
-    cwd: "C:\\workspace",
-    task: `start-${"x".repeat(MAX_CONFIRMATION_TASK_CHARS)}-end`,
-  });
-  assert.match(longMessage, /preview truncated/);
-  assert.match(longMessage, /start-/);
-  assert.match(longMessage, /-end/);
-  const escapedControlMessage = buildWriteConfirmationMessage("worker", { cwd: "C:\\workspace", task: "safe\u001b[2J" });
-  assert.match(escapedControlMessage, /safe\\u001b\[2J/);
+  assert.equal(confirmationMessage, "Agy worker may edit files and use approved commands. Continue?");
+  assert.doesNotMatch(confirmationMessage, /workspace|selected file|API must retain/i);
+  assert.equal(
+    buildWriteConfirmationMessage("delegate", {
+      cwd: "C:\\workspace",
+      task: `start-${"x".repeat(MAX_CONFIRMATION_TASK_CHARS)}-end`,
+    }),
+    "Agy delegate may edit files and use approved commands. Continue?",
+  );
 
   const rejected = await authorizeWriteRole("delegate", request, { hasUI: false });
   assert.equal(rejected.allowed, false);

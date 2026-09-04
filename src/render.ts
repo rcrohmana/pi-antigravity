@@ -26,6 +26,9 @@ export function renderAgyResult(
   }
   if (details?.error || details?.status && details.status !== "SUCCESS") {
     const message = details.error ?? `Agy status: ${details.status}`;
+    if (message.startsWith("ESCALATION REQUIRED")) {
+      return new Text(theme.fg("warning", `⚠ ${message}`), 0, 0);
+    }
     return new Text(theme.fg("error", `✗ ${message}`), 0, 0);
   }
   const response = result.content?.find((item) => item.type === "text")?.text?.trim() ?? "(empty response)";

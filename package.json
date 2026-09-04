@@ -14,9 +14,16 @@
     "PLAN.md",
     "docs/"
   ],
-  "keywords": ["pi-package", "pi", "antigravity", "agy"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "antigravity",
+    "agy"
+  ],
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
@@ -27,9 +34,14 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "static": "node scripts/check-static.mjs",
-    "check": "npm run static && npm test"
+    "typecheck": "tsc -p tsconfig.check.json",
+    "check": "npm run static && npm run typecheck && npm test"
   },
   "engines": {
     "node": ">=22.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "typescript": "7.0.2"
   }
 }

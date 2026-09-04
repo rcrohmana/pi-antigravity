@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { ROLE_CONFIGS, ROLES } from "../src/roles.ts";
+import { ROLE_CHAINING_GUIDE, ROLE_CONFIGS, ROLES } from "../src/roles.ts";
 
 test("role routes have explicit read/write capability boundaries", async () => {
   const source = await readFile(new URL("../index.ts", import.meta.url), "utf8");
@@ -29,6 +29,10 @@ test("role routes have explicit read/write capability boundaries", async () => {
   assert.equal(ROLE_CONFIGS.delegate.tools.includes("replace_file_content"), true);
   assert.match(source, /authorizeWriteRole\(role, \{ cwd, task, context, files \}/);
   assert.match(source, /authorizeResearchContext/);
+  assert.match(source, /loadAllowedCommands\(\)/);
+  assert.match(source, /allowedCommands: /);
+  assert.match(source, /ROLE_CONFIGS\[role\]\.readOnly \? undefined : await loadAllowedCommands\(\)/);
+  assert.match(source, /Agy settings notice/);
   assert.match(source, /agy_researcher does not accept file hints/);
   assert.match(source, /validateCwd/);
   assert.match(source, /model: ROLE_CONFIGS\[role\]\.model/);
@@ -55,4 +59,32 @@ test("plugin definitions use documented tools and forbid nested delegation", asy
   assert.match(researcher, /^tools:\r?\n  - search_web\r?\n  - read_url_content\r?$/m);
   assert.match(researcher, /# Research strategy/);
   assert.match(researcher, /## Gaps and next steps/);
+});
+
+test("role routing guidance covers cross-role boundaries and chaining", async () => {
+  for (const role of ROLES) {
+    assert.ok(
+      typeof ROLE_CONFIGS[role].boundary === "string" && ROLE_CONFIGS[role].boundary.length > 0,
+      `${role} config is missing a non-empty boundary`,
+    );
+  }
+  assert.match(ROLE_CONFIGS.researcher.boundary, /No local file/);
+  assert.match(ROLE_CONFIGS.worker.boundary, /No web/);
+  assert.match(ROLE_CHAINING_GUIDE, /agy_researcher/);
+  assert.match(ROLE_CHAINING_GUIDE, /agy_worker/);
+
+  const source = await readFile(new URL("../index.ts", import.meta.url), "utf8");
+  assert.match(source, /boundary/);
+  assert.match(source, /ROLE_CHAINING_GUIDE/);
+
+  const skillChecks = {
+    "agy-researcher": /Never put file-edit instructions in the researcher task/,
+    "agy-worker": /worker cannot browse/,
+    "agy-delegate": /delegate cannot browse/,
+    "agy-scout": /No web; for documentation lookups use `agy_researcher`/,
+  };
+  for (const [dir, pattern] of Object.entries(skillChecks)) {
+    const skill = await readFile(new URL(`../skills/${dir}/SKILL.md`, import.meta.url), "utf8");
+    assert.match(skill, pattern, `${dir}: missing chaining/do-not-use rule`);
+  }
 });

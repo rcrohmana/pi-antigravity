@@ -12,3 +12,5 @@ When the user asks for read-only exploration of the local codebase:
 3. Output is bounded by the extension; report escalation results verbatim.
 
 Do not call `agy_worker`/`agy_delegate` for these requests.
+
+Do not use when the request needs the web; `agy_scout` has no web tools and cannot fetch URLs. No web; for documentation lookups use `agy_researcher`.

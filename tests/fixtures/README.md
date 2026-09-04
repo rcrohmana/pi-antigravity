@@ -1,1 +1,3 @@
-Fixtures are captured/documented NDJSON shapes used by local parser tests. They are not live Agy output from a model-consuming smoke test.
+Fixtures are captured/documented NDJSON shapes used by local parser tests and the no-model A-04 descendant canary probe. They are not live Agy output from a model-consuming smoke test.
+
+`denied-command.ndjson` and `denied-command.stderr.txt` are verbatim captures from a live headless run of Agy CLI 1.1.26: a `worker` role's `run_command("echo probe")` call soft-denied for lack of a matching `command(...)` allow rule, with the run still finishing status `SUCCESS`. `denied-canceled.ndjson` is a documented (hand-authored, not captured) variant of the same denial shape covering the other observed outcome: a longer run with prior successful tool steps whose result status comes back `CANCELED` instead of `SUCCESS` after the same kind of denied `run_command` step.

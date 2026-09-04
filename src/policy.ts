@@ -33,43 +33,13 @@ export interface ResearchContextGateRequest {
 
 export const MAX_CONFIRMATION_TASK_CHARS = 1_000;
 const MAX_CONFIRMATION_CONTEXT_CHARS = 500;
-const MAX_CONFIRMATION_FILE_HINTS = 5;
-const MAX_CONFIRMATION_FILE_HINT_CHARS = 240;
 
 export function roleCanWrite(role: AgyRole): role is Extract<AgyRole, "worker" | "delegate"> {
   return role === "worker" || role === "delegate";
 }
 
-export function buildWriteConfirmationMessage(role: Extract<AgyRole, "worker" | "delegate">, request: WriteGateRequest): string {
-  const sections = [
-    "This starts the official agy CLI with the reviewed inputs below.",
-    `Role: ${role}`,
-    `Workspace (canonical): ${request.cwd}`,
-    "Important: this workspace sets the child process working directory; it is not a filesystem write sandbox.",
-    "Effective write scope is defined by Agy write_file(...) permission rules, which may allow other paths.",
-    `Task (${request.task.length} characters):\n${boundedConfirmationPreview(request.task, MAX_CONFIRMATION_TASK_CHARS)}`,
-  ];
-  if (request.context) {
-    sections.push(
-      `Explicit context (${request.context.length} characters):\n${boundedConfirmationPreview(request.context, MAX_CONFIRMATION_CONTEXT_CHARS)}`,
-    );
-  }
-  if (request.files?.length) {
-    const visibleHints = request.files
-      .slice(0, MAX_CONFIRMATION_FILE_HINTS)
-      .map((file) => `- ${boundedConfirmationPreview(file, MAX_CONFIRMATION_FILE_HINT_CHARS)}`);
-    const omitted = request.files.length - visibleHints.length;
-    sections.push(`File hints (${request.files.length}):\n${visibleHints.join("\n")}${omitted ? `\n[${omitted} additional file hint(s) not shown]` : ""}`);
-  }
-  sections.push(
-    "Actual capabilities:",
-    "- Create and replace file content, subject to Agy write-file permission rules.",
-    "- Run commands only when they match configured Agy command() allow rules.",
-    "- This runner does not use --sandbox.",
-    "- No direct file-deletion or nested-agent capability is available.",
-    "Continue?",
-  );
-  return sections.join("\n\n");
+export function buildWriteConfirmationMessage(role: Extract<AgyRole, "worker" | "delegate">, _request: WriteGateRequest): string {
+  return `Agy ${role} may edit files and use approved commands. Continue?`;
 }
 
 export async function authorizeWriteRole(role: AgyRole, request: WriteGateRequest, ui: ConfirmationUI): Promise<GateDecision> {

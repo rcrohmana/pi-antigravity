@@ -8,8 +8,9 @@ import { Type, type Static } from "typebox";
 
 import { formatProgress, renderAgyCall, renderAgyResult } from "./src/render.ts";
 import { formatModelVisibleResponse, runAgy } from "./src/runner.ts";
+import { loadAllowedCommands } from "./src/agy-settings.ts";
 import { registerAgyCommands } from "./src/commands.ts";
-import { ROLE_CONFIGS, ROLES, type AgyRole } from "./src/roles.ts";
+import { ROLE_CHAINING_GUIDE, ROLE_CONFIGS, ROLES, type AgyRole } from "./src/roles.ts";
 import {
   authorizeResearchContext,
   authorizeWriteRole,
@@ -37,7 +38,7 @@ type ToolUpdate = AgentToolResult<ToolDetails>;
 function toolDescription(role: AgyRole): string {
   const config = ROLE_CONFIGS[role];
   const write = config.readOnly ? "read-only" : "write-capable and requires confirmation";
-  return `Delegate a bounded task to the official agy CLI using the ${role} role (${write}). ${config.summary} Output is bounded; no full Pi conversation is forwarded.`;
+  return `Delegate a bounded task to the official agy CLI using the ${role} role (${write}). ${config.summary} ${config.boundary} ${ROLE_CHAINING_GUIDE} Output is bounded; no full Pi conversation is forwarded.`;
 }
 
 async function executeRole(
@@ -70,6 +71,11 @@ async function executeRole(
 
   if (ctx.hasUI) ctx.ui.setStatus("pi-antigravity", `${role} · starting`);
   try {
+    // Write-capable roles get the owner's Agy command allow-rule targets as
+    // advisory prompt text so the model does not probe with commands headless
+    // Agy would auto-deny (e.g. `python --version`); read-only roles never
+    // call run_command, so no policy is loaded or sent for them.
+    const commandPolicy = ROLE_CONFIGS[role].readOnly ? undefined : await loadAllowedCommands();
     const run = await runAgy({
       role,
       task,
@@ -80,6 +86,7 @@ async function executeRole(
       conversationId,
       model: ROLE_CONFIGS[role].model,
       mode: ROLE_CONFIGS[role].mode,
+      allowedCommands: commandPolicy?.commands,
       signal,
       onProgress: (progress) => {
         const text = formatProgress(role, progress.stepType, progress.textDelta);
@@ -90,8 +97,12 @@ async function executeRole(
         });
       },
     });
+    const responseText =
+      commandPolicy?.source === "unavailable"
+        ? `[Agy settings notice] Command allow rules unavailable (${commandPolicy.reason ?? "unknown"}); worker was told to run no commands.\n\n${formatModelVisibleResponse(run)}`
+        : formatModelVisibleResponse(run);
     return {
-      content: [{ type: "text", text: formatModelVisibleResponse(run) }],
+      content: [{ type: "text", text: responseText }],
       details: run,
     };
   } finally {
@@ -110,6 +121,11 @@ function registerRoleTool(pi: ExtensionAPI, role: AgyRole): void {
       role === "scout" || role === "researcher"
         ? `Treat agy_${role} as read-only; do not ask it to edit files.`
         : `agy_${role} is write-capable only after Pi confirms in TUI; it is denied in print/JSON/RPC contexts without UI.`,
+      role === "scout"
+        ? `Read-only, local only; no URLs.`
+        : role === "researcher"
+        ? `No file tools: never include "edit/revise/update file X" in the task; do the research here and hand the brief to agy_worker.`
+        : `No web tools: if the task needs online sources, call agy_researcher first and pass the brief as context.`,
     ],
     parameters: roleParameters,
     executionMode: "sequential",

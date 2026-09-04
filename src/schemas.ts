@@ -127,7 +127,9 @@ export interface AgyStepUpdatePayload {
   text_delta?: string;
   duration_seconds?: number;
   usage?: AgyUsage;
-  tool_info?: unknown;
+  tool_info?:
+    | { name?: string; parameters?: Record<string, unknown>; error?: { type?: string; message?: string; [k: string]: unknown }; [k: string]: unknown }
+    | unknown;
   subagent_info?: unknown;
   [key: string]: unknown;
 }
@@ -142,6 +144,7 @@ export interface AgyResultPayload {
   usage?: AgyUsage;
   structured_output?: unknown;
   json_schema?: unknown;
+  denied_actions?: Array<{ action?: string; display_name?: string; [k: string]: unknown }>;
   [key: string]: unknown;
 }
 
@@ -166,6 +169,14 @@ export interface AgyResultEvent {
 
 export type AgyStreamEvent = AgyInitEvent | AgyStepUpdateEvent | AgyResultEvent;
 
+/** One headlessly auto-denied tool call, distilled into an actionable summary. */
+export interface AgyDeniedTool {
+  toolName: string;
+  summary: string;
+  message?: string;
+  suggestedRule?: string;
+}
+
 export interface AgyToolDetails {
   role: string;
   cwd: string;
@@ -181,6 +192,7 @@ export interface AgyToolDetails {
   stepType?: string;
   error?: string;
   escalationRequired?: boolean;
+  deniedTools?: AgyDeniedTool[];
 }
 
 export interface AgyRunSummary {
@@ -195,6 +207,7 @@ export interface AgyRunSummary {
   diagnostics?: string;
   structuredOutput?: unknown;
   escalationRequired?: boolean;
+  deniedTools?: AgyDeniedTool[];
 }
 
 export type AgyErrorCode =
@@ -205,7 +218,8 @@ export type AgyErrorCode =
   | "agy_status"
   | "nonzero_exit"
   | "timeout"
-  | "aborted";
+  | "aborted"
+  | "permission_denied";
 
 export class AgyRunnerError extends Error {
   readonly code: AgyErrorCode;

@@ -13,3 +13,5 @@ When the user asks for delegated implementation work:
 4. Output is bounded by the extension; report escalation results verbatim.
 
 Prefer `agy_scout` for read-only exploration and `agy_delegate` for lightweight non-edit tasks.
+
+Do not use when the task is web research; `agy_worker` has no web tools. If the task mentions research, web, sources, citations, papers, or URLs, call `agy_researcher` first; worker cannot browse. Do not ask for validation that requires unapproved commands; say "validate by re-reading the file".

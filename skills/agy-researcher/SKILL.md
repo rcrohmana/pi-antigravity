@@ -13,3 +13,7 @@ When the user asks for research with cited sources:
 4. Output is bounded by the extension.
 
 Do not use for local code inspection (`agy_scout` covers that).
+
+Do not use when the task also requires reading or editing a workspace file; `agy_researcher` has no file tools and cannot touch the filesystem.
+
+Research then edit: if the user also wants a file updated, do two steps: call `agy_researcher`, then call `agy_worker` with the brief as `context` and the edit instruction as `task`. Never put file-edit instructions in the researcher task.
