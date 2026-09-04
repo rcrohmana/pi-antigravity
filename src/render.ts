@@ -2,7 +2,6 @@ import { Text } from "@earendil-works/pi-tui";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 
 import type { AgyToolDetails } from "./schemas.ts";
-import type { AgyRole } from "./roles.ts";
 
 export function renderAgyCall(
   args: { task?: string; cwd?: string },
@@ -37,7 +36,3 @@ export function renderAgyResult(
   return new Text(theme.fg("success", body), 0, 0);
 }
 
-export function formatProgress(role: AgyRole, stepType?: string, textDelta?: string): string {
-  const suffix = textDelta ? `: ${textDelta.replace(/\s+/g, " ").slice(-120)}` : "";
-  return `${role} · ${stepType ?? "working"}${suffix}`;
-}

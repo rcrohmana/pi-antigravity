@@ -6,6 +6,7 @@ import { ROLE_CHAINING_GUIDE, ROLE_CONFIGS, ROLES } from "../src/roles.ts";
 
 test("role routes have explicit read/write capability boundaries", async () => {
   const source = await readFile(new URL("../index.ts", import.meta.url), "utf8");
+  const roleSource = await readFile(new URL("../src/execute-role.ts", import.meta.url), "utf8");
   assert.match(source, /name: `agy_\$\{role\}`/);
   assert.match(source, /for \(const role of ROLES\) registerRoleTool/);
   assert.equal(ROLE_CONFIGS.scout.mode, "default");
@@ -27,18 +28,22 @@ test("role routes have explicit read/write capability boundaries", async () => {
   assert.equal(ROLE_CONFIGS.delegate.tools.includes("ask_question"), false);
   assert.equal(ROLE_CONFIGS.worker.tools.includes("replace_file_content"), true);
   assert.equal(ROLE_CONFIGS.delegate.tools.includes("replace_file_content"), true);
-  assert.match(source, /authorizeWriteRole\(role, \{ cwd, task, context, files \}/);
-  assert.match(source, /authorizeResearchContext/);
-  assert.match(source, /loadAllowedCommands\(\)/);
-  assert.match(source, /allowedCommands: /);
-  assert.match(source, /ROLE_CONFIGS\[role\]\.readOnly \? undefined : await loadAllowedCommands\(\)/);
-  assert.match(source, /Agy settings notice/);
-  assert.match(source, /agy_researcher does not accept file hints/);
-  assert.match(source, /validateCwd/);
+  // A-07: the execution path lives in src/execute-role.ts; index.ts only wires it.
+  assert.match(source, /import \{ executeRole, roleParameters, type RoleParameters \} from "\.\/src\/execute-role\.ts"/);
+  assert.match(source, /return executeRole\(role, params, signal, onUpdate, ctx\);/);
+  assert.doesNotMatch(source, /authorizeWriteRole|runAgyWithDenialRetry|loadAllowedCommands|preflightCwdCoverage/);
+  assert.match(roleSource, /authorizeWriteRole\(role, \{ cwd, task, context, files \}/);
+  assert.match(roleSource, /authorizeResearchContext/);
+  assert.match(roleSource, /const loadCommands = deps\.loadAllowedCommands \?\? loadAllowedCommands;/);
+  assert.match(roleSource, /allowedCommands: /);
+  assert.match(roleSource, /ROLE_CONFIGS\[role\]\.readOnly \? undefined : await loadCommands\(\)/);
+  assert.match(roleSource, /Agy settings notice/);
+  assert.match(roleSource, /agy_researcher does not accept file hints/);
+  assert.match(roleSource, /validateCwd/);
   // A-05: hints are validated against the resolved cwd, so cwd must be known first.
-  assert.match(source, /const cwd = await validateCwd\(params\.cwd, ctx\.cwd, \[ctx\.cwd\]\);\n  const files = validateFileHints\(params\.files, cwd\);/);
-  assert.match(source, /model: ROLE_CONFIGS\[role\]\.model/);
-  assert.doesNotMatch(source, /model:\s*params\.model/);
+  assert.match(roleSource, /const cwd = await validateCwd\(params\.cwd, ctx\.cwd, \[ctx\.cwd\]\);\n  const files = validateFileHints\(params\.files, cwd\);/);
+  assert.match(roleSource, /model: ROLE_CONFIGS\[role\]\.model/);
+  assert.doesNotMatch(roleSource, /model:\s*params\.model/);
   const runner = await readFile(new URL("../src/runner.ts", import.meta.url), "utf8");
   assert.match(runner, /output-format/);
 });
@@ -76,6 +81,7 @@ test("role routing guidance covers cross-role boundaries and chaining", async ()
   assert.match(ROLE_CHAINING_GUIDE, /agy_worker/);
 
   const source = await readFile(new URL("../index.ts", import.meta.url), "utf8");
+  const roleSource = await readFile(new URL("../src/execute-role.ts", import.meta.url), "utf8");
   assert.match(source, /boundary/);
   assert.match(source, /ROLE_CHAINING_GUIDE/);
 
@@ -93,11 +99,14 @@ test("role routing guidance covers cross-role boundaries and chaining", async ()
 
 test("role tools run through the bounded denial auto-retry with an opt-out parameter", async () => {
   const source = await readFile(new URL("../index.ts", import.meta.url), "utf8");
-  assert.match(source, /import \{ runAgyWithDenialRetry \} from "\.\/src\/retry\.ts"/);
-  assert.match(source, /runAgyWithDenialRetry\(\{/);
-  assert.match(source, /autoRetry: params\.auto_retry !== false/);
-  assert.match(source, /auto_retry: Type\.Optional\(/);
+  const roleSource = await readFile(new URL("../src/execute-role.ts", import.meta.url), "utf8");
+  assert.match(roleSource, /import \{ runAgyWithDenialRetry \} from "\.\/retry\.ts"/);
+  assert.match(roleSource, /const runRole = deps\.runRole \?\? runAgyWithDenialRetry;/);
+  assert.match(roleSource, /await runRole\(\{/);
+  assert.match(roleSource, /autoRetry: params\.auto_retry !== false/);
+  assert.match(roleSource, /auto_retry: Type\.Optional\(/);
   assert.doesNotMatch(source, /\brunAgy\(\{/);
+  assert.doesNotMatch(roleSource, /\brunAgy\(\{/);
   const retry = await readFile(new URL("../src/retry.ts", import.meta.url), "utf8");
   assert.match(retry, /export const MAX_DENIAL_RETRIES = 1;/);
   assert.doesNotMatch(retry, /dangerously/);
@@ -105,16 +114,18 @@ test("role tools run through the bounded denial auto-retry with an opt-out param
 
 test("composite research-apply and doctor tools are registered with a cwd preflight on role tools", async () => {
   const source = await readFile(new URL("../index.ts", import.meta.url), "utf8");
+  const roleSource = await readFile(new URL("../src/execute-role.ts", import.meta.url), "utf8");
   assert.match(source, /name: "agy_research_apply"/);
   assert.match(source, /executeResearchApply\(params, signal, onUpdate, ctx,/);
   assert.match(source, /executeRole\(role, legParams, legSignal, legUpdate, legCtx, internal\)/);
-  assert.match(source, /internal: \{ skipWriteGate\?: boolean \} = \{\}/);
-  assert.match(source, /internal\.skipWriteGate && ctx\.hasUI/);
+  assert.match(roleSource, /internal: \{ skipWriteGate\?: boolean \} = \{\}/);
+  assert.match(roleSource, /internal\.skipWriteGate && ctx\.hasUI/);
   assert.match(source, /name: "agy_doctor"/);
   assert.match(source, /runAgyDoctor\(\{ cwd \}\)/);
-  assert.match(source, /preflightCwdCoverage\(\{ cwd \}\)/);
-  assert.match(source, /skip_preflight: Type\.Optional\(/);
-  assert.match(source, /role !== "researcher" && !conversationId && !params\.skip_preflight/);
+  assert.match(roleSource, /const preflight = deps\.preflightCwdCoverage \?\? preflightCwdCoverage;/);
+  assert.match(roleSource, /await preflight\(\{ cwd \}\)/);
+  assert.match(roleSource, /skip_preflight: Type\.Optional\(/);
+  assert.match(roleSource, /role !== "researcher" && !conversationId && !params\.skip_preflight/);
   assert.match(source, /registerResearchApplyTool\(pi\);\s*registerDoctorTool\(pi\);/);
   const commands = await readFile(new URL("../src/commands.ts", import.meta.url), "utf8");
   assert.match(commands, /registerCommand\("agy_research_apply"/);
@@ -136,7 +147,8 @@ test("every role carries a graceful-degradation paragraph that reaches the Agy p
   assert.match(ROLE_CONFIGS.delegate.degradation, /never invent citations, URLs, or facts/);
   assert.match(ROLE_CONFIGS.scout.degradation, /agy_researcher for web sources, agy_worker for edits or commands/);
   const source = await readFile(new URL("../index.ts", import.meta.url), "utf8");
-  assert.match(source, /roleLimits: ROLE_CONFIGS\[role\]\.degradation/);
+  const roleSource = await readFile(new URL("../src/execute-role.ts", import.meta.url), "utf8");
+  assert.match(roleSource, /roleLimits: ROLE_CONFIGS\[role\]\.degradation/);
   const runner = await readFile(new URL("../src/runner.ts", import.meta.url), "utf8");
   assert.match(runner, /roleLimits: options\.roleLimits/);
   const plugin = async (role) => readFile(new URL(`../agy-plugin/agents/${role}.md`, import.meta.url), "utf8");
