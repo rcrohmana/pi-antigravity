@@ -145,3 +145,21 @@ test("every role carries a graceful-degradation paragraph that reaches the Agy p
   assert.match(await plugin("worker"), /^6\. You have no web tools\. Never invent citations/m);
   assert.match(await plugin("delegate"), /^6\. You have no web tools\. Never invent citations/m);
 });
+
+// ---- A-12: ROLE_CONFIGS must mirror the installed plugin frontmatter ----
+
+test("each plugin agent's frontmatter mirrors ROLE_CONFIGS (tools, command policy, inherited model)", async () => {
+  const { ROLE_CONFIGS, ROLES } = await import("../src/roles.ts");
+  for (const role of ROLES) {
+    const text = await readFile(new URL(`../agy-plugin/agents/${role}.md`, import.meta.url), "utf8");
+    const frontmatter = text.split(/^---\r?\n/m)[1];
+    assert.ok(frontmatter, `${role}: missing frontmatter`);
+    const tools = [...frontmatter.matchAll(/^  - ([a-z_]+)$/gm)].map((match) => match[1]);
+    assert.deepEqual([...tools].sort(), [...ROLE_CONFIGS[role].tools].sort(), `${role}: plugin tools drifted from ROLE_CONFIGS.tools`);
+    const policy = frontmatter.match(/^commandExecutionPolicy: (\S+)$/m)?.[1];
+    assert.equal(policy, ROLE_CONFIGS[role].commandExecutionPolicy, `${role}: commandExecutionPolicy drifted`);
+    // The runner passes --model from ROLE_CONFIGS; the plugin must not pin its own.
+    assert.equal(frontmatter.match(/^model: (\S+)$/m)?.[1], "inherit", `${role}: plugin must inherit the model chosen by the runner`);
+    assert.equal(frontmatter.match(/^name: (\S+)$/m)?.[1], ROLE_CONFIGS[role].agent);
+  }
+});

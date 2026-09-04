@@ -15,6 +15,7 @@ import {
   describeDeniedTool,
   formatModelVisibleResponse,
   formatPermissionDenialNotice,
+  killProcessTree,
   parseNdjsonLine,
   runAgy,
   resolveAgyExecutable,
@@ -1105,4 +1106,74 @@ test("buildAgyPrompt places the role-limits paragraph after the task and before 
   assert.ok(taskIndex > -1 && limitsIndex > taskIndex && policyIndex > limitsIndex);
   assert.equal(buildAgyPrompt("do x", "C:/ws", undefined, undefined, { roleLimits: "   " }).includes("Role limits"), false);
   assert.equal(buildAgyPrompt("do x", "C:/ws").includes("Role limits"), false);
+});
+
+// ---- A-08: diagnostics appear once in AgyRunnerError messages ----
+
+test("AgyRunnerError appends its diagnostics exactly once and keeps them under truncation", async () => {
+  const { AgyRunnerError, OUTPUT_TRUNCATION_MARKER } = await import("../src/schemas.ts");
+  const small = new AgyRunnerError("agy_status", "Agy finished with status CANCELED", { diagnostics: "jetski: no output produced" });
+  assert.equal(small.message, "Agy finished with status CANCELED\n\nDiagnostics: jetski: no output produced");
+  assert.equal((small.message.match(/Diagnostics:/g) ?? []).length, 1);
+  assert.equal(new AgyRunnerError("timeout", "slow").message, "slow");
+
+  const huge = new AgyRunnerError("agy_status", "HEAD marker " + "x".repeat(80_000), { diagnostics: "tail diagnostics" });
+  assert.equal((huge.message.match(/Diagnostics:/g) ?? []).length, 1);
+  assert.match(huge.message, /^HEAD marker/);
+  assert.match(huge.message, /Diagnostics: tail diagnostics$/);
+  assert.ok(huge.message.includes(OUTPUT_TRUNCATION_MARKER));
+});
+
+// ---- A-10: nothing is surfaced after the call has settled ----
+
+test("buffered stdout flushed by a late close after a forced timeout does not reach onProgress", async () => {
+  class NeverClosingChild extends FakeChild {
+    kill() {
+      this.killed = true;
+      return true; // ignores every signal; close never fires on its own
+    }
+  }
+  const child = new NeverClosingChild({ close: false });
+  const progress = [];
+  // A partial line: buffered by the parser, flushed only by parser.finish() on close.
+  queueMicrotask(() => child.stdout.emit("data", JSON.stringify({ event: "init", init: { conversation_id: "late-1" } })));
+  await assert.rejects(
+    runAgy({ role: "scout", task: "wait", cwd: process.cwd(), executable: FAKE_EXECUTABLE, spawnImpl: () => child, timeoutMs: 15, onProgress: (item) => progress.push(item) }),
+    (error) => error instanceof AgyRunnerError && error.code === "timeout",
+  );
+  assert.equal(child.killed, true);
+  const seen = progress.length;
+  child.stdout.emit("data", "\n" + JSON.stringify({ event: "step_update", step_update: { step_type: "text", text_delta: "late" } }) + "\n");
+  child.emit("close", 0, null);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(progress.length, seen);
+  assert.equal(progress.some((item) => item.conversationId === "late-1" || item.textDelta === "late"), false);
+});
+
+// ---- A-11: POSIX termination targets the process group ----
+
+test("killProcessTree signals the POSIX process group and falls back to the child", () => {
+  const calls = [];
+  const child = { pid: 4242, kill: (signal) => { calls.push(["child", signal]); return true; } };
+  killProcessTree(child, "linux", "SIGTERM", (pid, signal) => calls.push(["group", pid, signal]));
+  assert.deepEqual(calls, [["group", -4242, "SIGTERM"]]);
+
+  calls.length = 0;
+  killProcessTree(child, "darwin", "SIGKILL", () => { throw new Error("ESRCH"); });
+  assert.deepEqual(calls, [["child", "SIGKILL"]]);
+
+  calls.length = 0;
+  killProcessTree({ pid: undefined, kill: child.kill }, "linux", "SIGTERM", () => calls.push(["group"]));
+  assert.deepEqual(calls, [["child", "SIGTERM"]]);
+
+  calls.length = 0;
+  killProcessTree(child, "win32", "SIGKILL", () => calls.push(["group"]));
+  assert.deepEqual(calls, [["child", "SIGKILL"]]);
+});
+
+test("the child is spawned as a process-group leader on POSIX only", async () => {
+  const spawn = spawnFixture(await fixture("success.ndjson"));
+  await runAgy({ role: "scout", task: "inspect", cwd: process.cwd(), executable: FAKE_EXECUTABLE, spawnImpl: spawn });
+  assert.equal(spawn.last.spawnOptions.detached, process.platform !== "win32");
+  assert.equal(spawn.last.spawnOptions.shell, false);
 });

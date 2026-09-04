@@ -264,8 +264,10 @@ export class AgyRunnerError extends Error {
     details: { diagnostics?: string; status?: string; exitCode?: number | null; conversationId?: string; deniedTools?: AgyDeniedTool[]; deniedActions?: AgyDeniedAction[] } = {},
   ) {
     const diagnostics = details.diagnostics ? boundPiOutput(details.diagnostics) : undefined;
+    // boundPiOutput appends the notice itself (and keeps it when truncating),
+    // so the message must not carry a copy of it: A-08.
     const requiredNotice = diagnostics ? `Diagnostics: ${diagnostics}` : undefined;
-    super(boundPiOutput(diagnostics ? `${message}\n${requiredNotice}` : message, requiredNotice));
+    super(boundPiOutput(message, requiredNotice));
     this.name = "AgyRunnerError";
     this.code = code;
     this.diagnostics = diagnostics;

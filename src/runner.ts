@@ -561,6 +561,9 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
   let forceTermination: (() => void) | undefined;
 
   const processEvent = (event: AgyStreamEvent): void => {
+    // A-10: a late close (after a forced timeout/abort rejection) can flush
+    // buffered stdout; never surface progress once the call has settled.
+    if (settled) return;
     if (event.event === "init") {
       conversationId = event.init.conversation_id ?? event.conversation_id;
       options.onProgress?.({ event: "init", conversationId });
@@ -625,7 +628,7 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
     terminationHandle = setTimeout(() => {
       if (closeSeen || settled) return;
       try {
-        proc.kill("SIGKILL");
+        killProcessTree(proc, platform, "SIGKILL");
       } catch {
         // Best effort; settle below so callers never wait forever.
       }
@@ -656,6 +659,10 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
         shell: false,
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
+        // A-11: on POSIX, make the child a process-group leader so timeout and
+        // abort can signal Agy and every command it spawned (kill(-pid)).
+        // Windows uses taskkill /T instead; detached has no meaning there.
+        detached: platform !== "win32",
       });
     } catch (error) {
       rejectWith(reject, new AgyRunnerError("spawn_error", `Unable to start agy: ${error instanceof Error ? error.message : String(error)}`));
@@ -699,6 +706,7 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
     });
     proc.once("close", (code, signal) => {
       closeSeen = true;
+      if (settled) return;
       if (pendingFailure) {
         rejectWith(reject, pendingFailure);
         return;
@@ -820,6 +828,32 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
   });
 }
 
+/**
+ * Signal the child's whole process tree. On POSIX the child was spawned as a
+ * process-group leader, so a negative pid reaches Agy and every command it
+ * started; if that fails (no pid, group already gone), fall back to the
+ * direct child signal. Exported for tests; `killGroup` is injectable so no
+ * real process is signalled.
+ */
+export function killProcessTree(
+  child: Pick<ChildProcess, "pid" | "kill">,
+  platform: NodeJS.Platform,
+  signal: "SIGTERM" | "SIGKILL",
+  killGroup: (pid: number, signal: NodeJS.Signals) => void = (pid, sig) => {
+    process.kill(pid, sig);
+  },
+): void {
+  if (platform !== "win32" && child.pid) {
+    try {
+      killGroup(-child.pid, signal);
+      return;
+    } catch {
+      // Group signal failed; fall through to the direct child signal.
+    }
+  }
+  child.kill(signal);
+}
+
 function terminateProcessTree(child: ChildProcess, platform: NodeJS.Platform): void {
   if (platform === "win32" && child.pid) {
     const killer = nodeSpawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
@@ -838,5 +872,5 @@ function terminateProcessTree(child: ChildProcess, platform: NodeJS.Platform): v
     killer.once("close", directKill);
     return;
   }
-  child.kill("SIGTERM");
+  killProcessTree(child, platform, "SIGTERM");
 }
