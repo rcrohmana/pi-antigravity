@@ -118,7 +118,7 @@ Installation is a separate explicit action and requires `-ConfirmInstall`:
 .\\scripts\\install-agy-plugin.ps1 -ConfirmInstall
 ```
 
-Review `PLAN.md`, `docs/architecture.md`, and `docs/permissions.md` before enabling the extension or installing the plugin.
+Review `docs/architecture.md` and `docs/permissions.md` before enabling the extension or installing the plugin.
 
 ## Quick start
 
