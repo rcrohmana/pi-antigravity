@@ -2,6 +2,7 @@ node_modules/
 *.log
 .tsbuildinfo
 dist/
+CLAUDE.md
 
 # OS junk
 Thumbs.db
