@@ -22,7 +22,8 @@ test("the call line names the role and flags write capability", () => {
   assert.equal(renderAgyCall({ role: "scout", task: "look", cwd: "C:/ws" }, theme).text, "agy scout (read-only) C:/ws look");
   assert.ok(!styles.includes("warning"));
   assert.equal(renderAgyCall({ role: "research_apply", task: "q → apply", cwd: "C:/ws" }, theme).text, "agy research_apply (research → writes) C:/ws q → apply");
-  assert.equal(renderAgyCall({ role: "doctor", task: "doctor" }, theme).text, "agy doctor (read-only) . doctor");
+  assert.equal(renderAgyCall({ role: "doctor", cwd: "C:/ws" }, theme).text, "agy doctor (read-only) C:/ws");
+  assert.equal(renderAgyCall({ role: "doctor" }, theme).text, "agy doctor (read-only) .");
   assert.equal(renderAgyCall({ task: "legacy" }, theme).text, "agy . legacy");
 });
 

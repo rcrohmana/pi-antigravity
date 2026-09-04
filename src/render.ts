@@ -15,7 +15,8 @@ export function renderAgyCall(
   // Write-capable roles are visibly flagged so the user knows before confirming.
   const capability = describeRoleCapability(role);
   const capabilityText = capability ? ` ${theme.fg(capability === "read-only" ? "muted" : "warning", `(${capability})`)}` : "";
-  return new Text(`${label}${capabilityText} ${theme.fg("accent", cwd)} ${theme.fg("muted", task.slice(0, 120))}`, 0, 0);
+  const taskText = task ? ` ${theme.fg("muted", task.slice(0, 120))}` : "";
+  return new Text(`${label}${capabilityText} ${theme.fg("accent", cwd)}${taskText}`, 0, 0);
 }
 
 export function renderAgyResult(

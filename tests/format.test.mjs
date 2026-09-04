@@ -153,3 +153,17 @@ test("formatReadyNotice states the covering rules and command count", async () =
   );
   assert.equal(formatReadyNotice({ cwd: "C:/ws", readRule: "read_file(C:/)", writeRule: "write_file(C:/)", readOnlyRole: false }), "✓ Agy ready for C:/ws: read_file(C:/) (read) and write_file(C:/) (write) cover this workspace");
 });
+
+test("relativizeTarget shows in-workspace targets relative to cwd and leaves others absolute", async () => {
+  const { relativizeTarget } = await import("../src/format.ts");
+  assert.equal(relativizeTarget("C:\\Users\\me\\ws\\script\\vsh.py", "C:\\Users\\me\\ws", "win32"), "script/vsh.py");
+  assert.equal(relativizeTarget("c:/users/ME/ws/a.ts", "C:\\Users\\me\\ws\\", "win32"), "a.ts");
+  assert.equal(relativizeTarget("C:\\Users\\me\\ws", "C:\\Users\\me\\ws", "win32"), ".");
+  assert.equal(relativizeTarget("C:\\Users\\me\\ws-other\\a.ts", "C:\\Users\\me\\ws", "win32"), "C:\\Users\\me\\ws-other\\a.ts");
+  assert.equal(relativizeTarget("D:\\elsewhere\\a.ts", "C:\\Users\\me\\ws", "win32"), "D:\\elsewhere\\a.ts");
+  assert.equal(relativizeTarget("/home/me/ws/src/a.ts", "/home/me/ws", "linux"), "src/a.ts");
+  assert.equal(relativizeTarget("/home/me/WS/src/a.ts", "/home/me/ws", "linux"), "/home/me/WS/src/a.ts");
+  assert.equal(relativizeTarget("git status", "/home/me/ws", "linux"), "git status");
+  assert.equal(relativizeTarget(undefined, "/home/me/ws"), undefined);
+  assert.equal(relativizeTarget("a.ts", undefined), "a.ts");
+});

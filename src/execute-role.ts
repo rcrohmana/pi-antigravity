@@ -18,7 +18,7 @@ import {
   validateFileHints,
   validateTask,
 } from "./policy.ts";
-import { formatProgress, formatReadyNotice } from "./format.ts";
+import { formatProgress, formatReadyNotice, relativizeTarget } from "./format.ts";
 import { runAgyWithDenialRetry } from "./retry.ts";
 import { ROLE_CONFIGS, type AgyRole } from "./roles.ts";
 import { formatModelVisibleResponse } from "./runner.ts";
@@ -61,6 +61,11 @@ const announcedReadyCwds = new Set<string>();
 /** Test seam: forget which workspaces were announced. */
 export function resetReadyAnnouncements(): void {
   announcedReadyCwds.clear();
+}
+
+/** Test seam: treat a workspace as already announced. */
+export function markWorkspaceReadyAnnounced(cwd: string): void {
+  announcedReadyCwds.add(cwd);
 }
 
 /** Seams for tests; production callers pass nothing and get the real modules. */
@@ -159,10 +164,12 @@ export async function executeRole(
   }
 
   // The positive readiness line is shown once per workspace per session,
-  // only after the gates passed (so a declined confirmation shows nothing).
-  if (readyNotice && ctx.hasUI) {
+  // only after the gates passed (so a declined confirmation shows nothing):
+  // as a notification when there is a UI, and as the first line of the
+  // result text either way, so it survives in the scrollback.
+  if (readyNotice) {
     announcedReadyCwds.add(cwd);
-    ctx.ui.notify(readyNotice, "info");
+    if (ctx.hasUI) ctx.ui.notify(readyNotice, "info");
   }
 
   const progressLabel = internal.progressLabel ?? role;
@@ -199,7 +206,7 @@ export async function executeRole(
           stepIndex: progress.stepIndex,
           stepType: progress.stepType,
           toolName: progress.toolName,
-          toolTarget: progress.toolTarget,
+          toolTarget: relativizeTarget(progress.toolTarget, cwd),
           textDelta: progress.textDelta,
         });
         if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, text);
@@ -210,6 +217,7 @@ export async function executeRole(
       },
     });
     const notices = [
+      readyNotice,
       preflightNotice,
       commandPolicy?.source === "unavailable"
         ? `[Agy settings notice] Command allow rules unavailable (${commandPolicy.reason ?? "unknown"}); worker was told to run no commands.`

@@ -224,3 +224,24 @@ export function formatReadyNotice(input: {
   }
   return parts.join("; ");
 }
+
+function slashed(value: string): string {
+  return value.replace(/\\/g, "/");
+}
+
+/**
+ * Show a tool target relative to the workspace when it lies inside it
+ * (`script/vsh.py` instead of `C:\\Users\\...\\playground\\script\\vsh.py`);
+ * targets outside the workspace stay absolute so they are noticed.
+ * Case-insensitive on Windows, where Agy may echo a different drive-letter case.
+ */
+export function relativizeTarget(target: string | undefined, cwd: string | undefined, platform: NodeJS.Platform = process.platform): string | undefined {
+  if (!target || !cwd) return target;
+  const normalizedCwd = slashed(cwd).replace(/\/+$/, "");
+  const normalizedTarget = slashed(target);
+  const fold = (value: string): string => (platform === "win32" ? value.toLowerCase() : value);
+  if (fold(normalizedTarget) === fold(normalizedCwd)) return ".";
+  const prefix = `${normalizedCwd}/`;
+  if (fold(normalizedTarget).startsWith(fold(prefix))) return normalizedTarget.slice(prefix.length) || ".";
+  return target;
+}

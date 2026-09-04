@@ -111,7 +111,7 @@ function registerDoctorTool(pi: ExtensionAPI): void {
       };
     },
     renderCall(args, theme) {
-      return renderAgyCall({ role: "doctor", task: "doctor", cwd: args.cwd }, theme);
+      return renderAgyCall({ role: "doctor", cwd: args.cwd }, theme);
     },
     renderResult(result, options, theme) {
       return renderAgyResult(result, options, theme);

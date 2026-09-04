@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PROGRESS_THROTTLE_MS, STATUS_KEY, executeRole, resetReadyAnnouncements } from "../src/execute-role.ts";
+import { PROGRESS_THROTTLE_MS, STATUS_KEY, executeRole, markWorkspaceReadyAnnounced, resetReadyAnnouncements } from "../src/execute-role.ts";
 import { formatProgress } from "../src/format.ts";
 import { ROLE_CONFIGS } from "../src/roles.ts";
 
@@ -31,7 +31,11 @@ function makeCtx({ hasUI = true, confirmResult = true } = {}) {
   };
 }
 
-test.beforeEach(() => resetReadyAnnouncements());
+// Most tests assume the workspace was already announced; the ready-notice test resets explicitly.
+test.beforeEach(() => {
+  resetReadyAnnouncements();
+  markWorkspaceReadyAnnounced(process.cwd());
+});
 
 const covered = { source: "settings", readCoveringRule: "read_file(C:/ws)", writeCoveringRule: "write_file(C:/ws)" };
 const readOnlyCovered = { source: "settings", readCoveringRule: "read_file(C:/ws)" };
@@ -104,21 +108,28 @@ test("the write confirmation shows the allowed commands and write coverage the p
 });
 
 test("the ready notice is shown once per workspace, only after the gates passed", async () => {
+  resetReadyAnnouncements();
   const declined = makeCtx({ confirmResult: false });
   await assert.rejects(executeRole("worker", { task: "edit" }, undefined, undefined, declined.ctx, {}, makeDeps().deps), /rejected by the user/);
   assert.deepEqual(declined.notifications, [], "a declined confirmation announces nothing");
 
   const { ctx, notifications } = makeCtx();
-  await executeRole("worker", { task: "edit" }, undefined, undefined, ctx, {}, makeDeps().deps);
+  const first = await executeRole("worker", { task: "edit" }, undefined, undefined, ctx, {}, makeDeps().deps);
+  const readyLine = `✓ Agy ready for ${process.cwd()}: read_file(C:/ws) (read) and write_file(C:/ws) (write) cover this workspace; 1 command allowed`;
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0].level, "info");
-  assert.equal(
-    notifications[0].text,
-    `✓ Agy ready for ${process.cwd()}: read_file(C:/ws) (read) and write_file(C:/ws) (write) cover this workspace; 1 command allowed`,
-  );
-  await executeRole("scout", { task: "look" }, undefined, undefined, ctx, {}, makeDeps({ coverage: readOnlyCovered }).deps);
+  assert.equal(notifications[0].text, readyLine);
+  assert.equal(first.content[0].text, `${readyLine}\n\nworker done`, "the ready line is also the first line of the result");
+  const second = await executeRole("scout", { task: "look" }, undefined, undefined, ctx, {}, makeDeps({ coverage: readOnlyCovered }).deps);
+  assert.equal(second.content[0].text, "scout done");
   await executeRole("worker", { task: "edit again" }, undefined, undefined, ctx, {}, makeDeps().deps);
   assert.equal(notifications.length, 1, "announced once per workspace per session");
+
+  resetReadyAnnouncements();
+  const headless = makeCtx({ hasUI: false });
+  const headlessResult = await executeRole("scout", { task: "look" }, undefined, undefined, headless.ctx, {}, makeDeps({ coverage: readOnlyCovered }).deps);
+  assert.deepEqual(headless.notifications, []);
+  assert.match(headlessResult.content[0].text, /^✓ Agy ready for .*: read_file\(C:\/ws\) \(read\) cover this workspace\n\nscout done$/);
 
   resetReadyAnnouncements();
   const scoutFirst = makeCtx();
@@ -203,7 +214,7 @@ test("progress is forwarded to Pi as partial RUNNING updates with elapsed time, 
       clock += 500; // 0:00
       options.onProgress({ event: "init", conversationId: "conv-2" });
       clock += 61_000; // 1:01
-      options.onProgress({ event: "step_update", stepIndex: 3, stepType: "tool", toolName: "grep_search", toolTarget: "C:/ws/src   deep" });
+      options.onProgress({ event: "step_update", stepIndex: 3, stepType: "tool", toolName: "grep_search", toolTarget: `${options.cwd}/src   deep` });
       clock += 1_000; // 1:02
       options.onProgress({ event: "step_update", stepIndex: 4, stepType: "agent_response", textDelta: "listing   files" });
       return { role: "scout", cwd: options.cwd, status: "SUCCESS", response: "scout done" };
@@ -214,7 +225,7 @@ test("progress is forwarded to Pi as partial RUNNING updates with elapsed time, 
   await executeRole("scout", { task: "look" }, undefined, (update) => updates.push(update), ctx, {}, deps);
   assert.deepEqual(
     updates.map((update) => update.content[0].text),
-    ["scout · 0:00 · working", "scout · 1:01 · step 3 · grep_search C:/ws/src deep", "scout · 1:02 · step 4 · agent_response: listing files"],
+    ["scout · 0:00 · working", "scout · 1:01 · step 3 · grep_search src deep", "scout · 1:02 · step 4 · agent_response: listing files"],
   );
   assert.deepEqual(updates[1].details, { role: "scout", cwd: process.cwd(), status: "RUNNING", partial: true, stepType: "tool" });
   assert.deepEqual(statuses.map((entry) => entry.text), ["scout · starting", ...updates.map((update) => update.content[0].text), undefined]);

@@ -482,6 +482,10 @@ export async function runAgyDoctor(options: RunAgyDoctorOptions): Promise<Doctor
     checks.push(
       await runCheck("settings", "Agy settings file", async () => {
         const settingsPath = resolveAgySettingsPath(env, platform);
+        // Displayed with forward slashes: when the model echoes the report as
+        // markdown, a backslash before "." (C:\Users\<you>\.gemini) is eaten
+        // as an escape and the path renders wrong.
+        const shownPath = settingsPath?.replace(/\\/g, "/");
         if (!settingsPath) {
           return {
             id: "settings",
@@ -499,7 +503,7 @@ export async function runAgyDoctor(options: RunAgyDoctorOptions): Promise<Doctor
             id: "settings",
             level: "fail",
             title: "Agy settings file",
-            detail: `Could not read ${settingsPath}: ${describeReadError(error)}`,
+            detail: `Could not read ${shownPath}: ${describeReadError(error)}`,
             fix: "See docs/permissions.md for the expected settings.json location and shape.",
           };
         }
@@ -508,7 +512,7 @@ export async function runAgyDoctor(options: RunAgyDoctorOptions): Promise<Doctor
             id: "settings",
             level: "fail",
             title: "Agy settings file",
-            detail: `${settingsPath} exceeds the ${SETTINGS_MAX_BYTES} byte read cap`,
+            detail: `${shownPath} exceeds the ${SETTINGS_MAX_BYTES} byte read cap`,
             fix: "See docs/permissions.md for the expected settings.json location and shape.",
           };
         }
@@ -519,12 +523,12 @@ export async function runAgyDoctor(options: RunAgyDoctorOptions): Promise<Doctor
             id: "settings",
             level: "fail",
             title: "Agy settings file",
-            detail: `${settingsPath} is not valid JSON`,
+            detail: `${shownPath} is not valid JSON`,
             fix: "See docs/permissions.md for the expected settings.json location and shape.",
           };
         }
         settingsOk = true;
-        return { id: "settings", level: "ok", title: "Agy settings file", detail: `Parsed ${settingsPath}` };
+        return { id: "settings", level: "ok", title: "Agy settings file", detail: `Parsed ${shownPath}` };
       }),
     );
 
