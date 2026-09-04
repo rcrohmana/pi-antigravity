@@ -4,9 +4,11 @@ import { posix as posixPath, win32 as win32Path } from "node:path";
 
 import {
   AgyRunnerError,
+  type AgyDeniedAction,
   type AgyDeniedTool,
   type AgyInitEvent,
   type AgyResultEvent,
+  type AgyRetryInfo,
   type AgyRunSummary,
   type AgyStatus,
   type AgyStreamEvent,
@@ -332,12 +334,47 @@ export function formatPermissionDenialNotice(input: {
   return lines.join("\n");
 }
 
-export function formatModelVisibleResponse(run: Pick<AgyRunSummary, "response" | "diagnostics" | "escalationRequired">): string {
+const STDERR_PERMISSION_PATTERN = /required the "([a-z_]+)" permission/gi;
+
+/**
+ * Derives denied permission categories from Agy's headless stderr line
+ * (`... required the "command" permission that headless mode cannot prompt for ...`)
+ * for runs whose stream carried no per-step denial evidence.
+ */
+export function deniedActionsFromDiagnostics(diagnostics: string | undefined): AgyDeniedAction[] {
+  if (!diagnostics) return [];
+  const seen = new Set<string>();
+  const actions: AgyDeniedAction[] = [];
+  for (const match of diagnostics.matchAll(STDERR_PERMISSION_PATTERN)) {
+    const action = match[1]?.toLowerCase();
+    if (!action || seen.has(action)) continue;
+    seen.add(action);
+    actions.push({ action });
+    if (actions.length >= MAX_DENIED_TOOLS) break;
+  }
+  return actions;
+}
+
+/** One-paragraph, model-visible summary of a bounded auto-retry after a headless denial. */
+export function formatRetryNotice(retry: AgyRetryInfo): string {
+  const denied = retry.firstAttemptDeniedTools.map(
+    (tool) => `${tool.toolName} \`${tool.summary}\`${tool.suggestedRule ? ` (suggested rule: ${tool.suggestedRule})` : ""}`,
+  );
+  const actions = retry.firstAttemptDeniedActions.map((action) => `${action.action ?? "unknown"} permission${action.displayName ? ` (${action.displayName})` : ""}`);
+  const what = denied.length ? denied.join("; ") : actions.length ? actions.join("; ") : "a tool call (see first-attempt diagnostics)";
+  return [
+    `[Agy auto-retry] The first attempt (status ${retry.firstAttemptStatus}) was auto-denied headlessly for: ${what}.`,
+    "The same Agy conversation was continued once with an instruction not to call it again; the result below is from that continuation. The owner can still add the suggested allow rule so future runs may use the tool.",
+  ].join("\n");
+}
+
+export function formatModelVisibleResponse(run: Pick<AgyRunSummary, "response" | "diagnostics" | "escalationRequired" | "retry">): string {
   const response = run.response.trimEnd();
   const diagnostics = run.diagnostics?.trim();
-  if (!diagnostics) return boundPiOutput(response);
+  const retryNotice = run.retry ? formatRetryNotice(run.retry) : undefined;
+  if (!diagnostics) return boundPiOutput(response, retryNotice);
   const heading = run.escalationRequired ? "[ESCALATION REQUIRED: Agy permission/approval notice]" : "[Agy diagnostics]";
-  const notice = `${heading}\n${diagnostics}`;
+  const notice = `${retryNotice ? `${retryNotice}\n\n` : ""}${heading}\n${diagnostics}`;
   return boundPiOutput(response, notice);
 }
 
@@ -505,7 +542,7 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
   let lastUsage: AgyUsage | undefined;
   const deniedTools: AgyDeniedTool[] = [];
   const seenDeniedToolKeys = new Set<string>();
-  let deniedActions: Array<{ action?: string; displayName?: string }> = [];
+  let deniedActions: AgyDeniedAction[] = [];
   let proc: ChildProcess;
   let settled = false;
   let closeSeen = false;
@@ -691,15 +728,26 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
       const stderrText = diagnostics.toString();
       const hasDeniedEvidence = deniedTools.length > 0 || deniedActions.length > 0;
       const notice = hasDeniedEvidence ? formatPermissionDenialNotice({ deniedTools, deniedActions }) : undefined;
-      const denied = hasDeniedEvidence || classifyDiagnostics(stderrText || undefined);
+      // A CANCELED trajectory can end before the denied step's ERROR update is
+      // streamed; the stderr line is then the only evidence of the category.
+      if (deniedTools.length === 0 && deniedActions.length === 0) deniedActions = deniedActionsFromDiagnostics(stderrText);
+      const denied = hasDeniedEvidence || deniedActions.length > 0 || classifyDiagnostics(stderrText || undefined);
+      const noticeText = notice ?? (deniedActions.length > 0 ? formatPermissionDenialNotice({ deniedTools, deniedActions }) : undefined);
       if (status !== "SUCCESS") {
         if (denied) {
           rejectWith(
             reject,
             new AgyRunnerError(
               "permission_denied",
-              `ESCALATION REQUIRED: Agy ended the run with status ${String(status ?? "<missing>")} after a headless permission denial (not a user cancel).${notice ? `\n${notice}` : ""}`,
-              { diagnostics: stderrText, status: String(status ?? ""), exitCode: code },
+              `ESCALATION REQUIRED: Agy ended the run with status ${String(status ?? "<missing>")} after a headless permission denial (not a user cancel).${noticeText ? `\n${noticeText}` : ""}`,
+              {
+                diagnostics: stderrText,
+                status: String(status ?? ""),
+                exitCode: code,
+                conversationId,
+                deniedTools: deniedTools.length > 0 ? [...deniedTools] : undefined,
+                deniedActions: deniedActions.length > 0 ? [...deniedActions] : undefined,
+              },
             ),
           );
           return;
@@ -717,7 +765,7 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
       }
       settled = true;
       cleanup();
-      const combinedDiagnostics = notice ? (stderrText ? `${notice}\n\n${stderrText}` : notice) : stderrText;
+      const combinedDiagnostics = noticeText ? (stderrText ? `${noticeText}\n\n${stderrText}` : noticeText) : stderrText;
       const diagnosticText = combinedDiagnostics ? boundPiOutput(combinedDiagnostics) : undefined;
       resolvePromise({
         role: options.role,
@@ -731,6 +779,7 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
         diagnostics: diagnosticText,
         escalationRequired: denied,
         deniedTools: deniedTools.length > 0 ? deniedTools : undefined,
+        deniedActions: deniedActions.length > 0 ? deniedActions : undefined,
         structuredOutput: result.structured_output,
       });
     });

@@ -170,11 +170,30 @@ export interface AgyResultEvent {
 export type AgyStreamEvent = AgyInitEvent | AgyStepUpdateEvent | AgyResultEvent;
 
 /** One headlessly auto-denied tool call, distilled into an actionable summary. */
+/** One entry of the terminal result's `denied_actions` (permission category, not a specific call). */
+export interface AgyDeniedAction {
+  action?: string;
+  displayName?: string;
+}
+
 export interface AgyDeniedTool {
   toolName: string;
   summary: string;
   message?: string;
   suggestedRule?: string;
+}
+
+/**
+ * Recorded when the extension continued the same Agy conversation once after a
+ * headless permission denial (item 4 auto-retry). The first attempt's denial
+ * evidence is preserved so the owner can still add the right allow rule.
+ */
+export interface AgyRetryInfo {
+  attempted: true;
+  firstAttemptStatus: string;
+  firstAttemptDeniedTools: AgyDeniedTool[];
+  firstAttemptDeniedActions: AgyDeniedAction[];
+  firstAttemptNotice?: string;
 }
 
 export interface AgyToolDetails {
@@ -192,7 +211,11 @@ export interface AgyToolDetails {
   stepType?: string;
   error?: string;
   escalationRequired?: boolean;
+  retry?: AgyRetryInfo;
   deniedTools?: AgyDeniedTool[];
+  deniedActions?: AgyDeniedAction[];
+  /** Present only on a synthetic "research_apply" role: the per-leg details of the composite flow. */
+  legs?: { research?: AgyToolDetails; apply?: AgyToolDetails };
 }
 
 export interface AgyRunSummary {
@@ -207,7 +230,9 @@ export interface AgyRunSummary {
   diagnostics?: string;
   structuredOutput?: unknown;
   escalationRequired?: boolean;
+  retry?: AgyRetryInfo;
   deniedTools?: AgyDeniedTool[];
+  deniedActions?: AgyDeniedAction[];
 }
 
 export type AgyErrorCode =
@@ -226,11 +251,17 @@ export class AgyRunnerError extends Error {
   readonly diagnostics?: string;
   readonly status?: string;
   readonly exitCode?: number | null;
+  /** Agy conversation ID when the stream reported one before the failure (enables a bounded continuation). */
+  readonly conversationId?: string;
+  /** Denied tool calls observed before the failure (bounded summaries only). */
+  readonly deniedTools?: AgyDeniedTool[];
+  /** Permission categories the terminal result reported as denied. */
+  readonly deniedActions?: AgyDeniedAction[];
 
   constructor(
     code: AgyErrorCode,
     message: string,
-    details: { diagnostics?: string; status?: string; exitCode?: number | null } = {},
+    details: { diagnostics?: string; status?: string; exitCode?: number | null; conversationId?: string; deniedTools?: AgyDeniedTool[]; deniedActions?: AgyDeniedAction[] } = {},
   ) {
     const diagnostics = details.diagnostics ? boundPiOutput(details.diagnostics) : undefined;
     const requiredNotice = diagnostics ? `Diagnostics: ${diagnostics}` : undefined;
@@ -240,5 +271,8 @@ export class AgyRunnerError extends Error {
     this.diagnostics = diagnostics;
     this.status = details.status;
     this.exitCode = details.exitCode;
+    this.conversationId = details.conversationId;
+    this.deniedTools = details.deniedTools;
+    this.deniedActions = details.deniedActions;
   }
 }

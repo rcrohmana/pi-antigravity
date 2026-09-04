@@ -38,3 +38,15 @@ test("buildRolePrompt bounds oversized args and stays valid JSON", () => {
   assert.match(prompt, /\[arguments truncated at 8000 characters\]$/);
   JSON.parse(JSON.stringify({ prompt }));
 });
+
+test("doctor and research-apply slash commands build deterministic prompts", async () => {
+  const { DOCTOR_PROMPT } = await import("../src/commands.ts");
+  const { buildResearchApplyPrompt } = await import("../src/research-apply.ts");
+  assert.match(DOCTOR_PROMPT, /agy_doctor tool/);
+  assert.match(DOCTOR_PROMPT, /\[FAIL\]/);
+  const prompt = buildResearchApplyPrompt("research Vsh methods then update docs/plan.md");
+  assert.match(prompt, /^Use the agy_research_apply tool\./);
+  assert.match(prompt, /`question`/);
+  assert.match(prompt, /`apply_task`/);
+  assert.match(prompt, /REQUEST:\nresearch Vsh methods then update docs\/plan\.md$/);
+});

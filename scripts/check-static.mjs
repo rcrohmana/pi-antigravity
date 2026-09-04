@@ -59,7 +59,7 @@ assert.match(commandsSource, /isIdle/);
 // Skills: valid names/descriptions, trigger phrases, no allowed-tools.
 const skillsDir = join(root, "skills");
 const skillNames = await readdir(skillsDir);
-assert.deepEqual(skillNames.sort(), ["agy-delegate", "agy-researcher", "agy-scout", "agy-worker"].sort());
+assert.deepEqual(skillNames.sort(), ["agy-delegate", "agy-researcher", "agy-research-apply", "agy-scout", "agy-worker"].sort());
 for (const dir of skillNames) {
   const skill = await readFile(join(skillsDir, dir, "SKILL.md"), "utf8");
   const nameMatch = skill.match(/^name: ([a-z0-9-]+)$/m);

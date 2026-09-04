@@ -1056,3 +1056,28 @@ test("offline descendant canary: non-allow-listed canary is absent from child an
     "PATH is missing from the child environment",
   );
 });
+
+test("deniedActionsFromDiagnostics extracts permission categories from the headless stderr line", async () => {
+  const { deniedActionsFromDiagnostics } = await import("../src/runner.ts");
+  const stderr = await fixture("denied-command.stderr.txt");
+  assert.deepEqual(deniedActionsFromDiagnostics(stderr), [{ action: "command" }]);
+  assert.deepEqual(deniedActionsFromDiagnostics('a tool required the "read_file" permission; a tool required the "read_file" permission'), [{ action: "read_file" }]);
+  assert.deepEqual(deniedActionsFromDiagnostics("network unreachable"), []);
+  assert.deepEqual(deniedActionsFromDiagnostics(undefined), []);
+});
+
+test("a CANCELED result with stderr-only denial evidence rejects with permission_denied carrying deniedActions", async () => {
+  const init = '{"event":"init","conversation_id":"conv-c","init":{"tools":[]}}\n';
+  const canceled = `${init}{"event":"result","result":{"conversation_id":"conv-c","status":"CANCELED","response":""}}\n`;
+  const spawn = spawnFixture(canceled, { error: await fixture("denied-command.stderr.txt") });
+  await assert.rejects(
+    runAgy({ role: "worker", task: "t", cwd: process.cwd(), executable: FAKE_EXECUTABLE, spawnImpl: spawn }),
+    (error) =>
+      error instanceof AgyRunnerError &&
+      error.code === "permission_denied" &&
+      error.conversationId === "conv-c" &&
+      error.deniedActions?.[0]?.action === "command" &&
+      /command \(RunCommand\)|- command\b/.test(error.message) &&
+      /Generic allow rule form/.test(error.message),
+  );
+});

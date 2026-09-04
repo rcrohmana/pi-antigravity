@@ -88,3 +88,36 @@ test("role routing guidance covers cross-role boundaries and chaining", async ()
     assert.match(skill, pattern, `${dir}: missing chaining/do-not-use rule`);
   }
 });
+
+test("role tools run through the bounded denial auto-retry with an opt-out parameter", async () => {
+  const source = await readFile(new URL("../index.ts", import.meta.url), "utf8");
+  assert.match(source, /import \{ runAgyWithDenialRetry \} from "\.\/src\/retry\.ts"/);
+  assert.match(source, /runAgyWithDenialRetry\(\{/);
+  assert.match(source, /autoRetry: params\.auto_retry !== false/);
+  assert.match(source, /auto_retry: Type\.Optional\(/);
+  assert.doesNotMatch(source, /\brunAgy\(\{/);
+  const retry = await readFile(new URL("../src/retry.ts", import.meta.url), "utf8");
+  assert.match(retry, /export const MAX_DENIAL_RETRIES = 1;/);
+  assert.doesNotMatch(retry, /dangerously/);
+});
+
+test("composite research-apply and doctor tools are registered with a cwd preflight on role tools", async () => {
+  const source = await readFile(new URL("../index.ts", import.meta.url), "utf8");
+  assert.match(source, /name: "agy_research_apply"/);
+  assert.match(source, /executeResearchApply\(params, signal, onUpdate, ctx,/);
+  assert.match(source, /executeRole\(role, legParams, legSignal, legUpdate, legCtx, internal\)/);
+  assert.match(source, /internal: \{ skipWriteGate\?: boolean \} = \{\}/);
+  assert.match(source, /internal\.skipWriteGate && ctx\.hasUI/);
+  assert.match(source, /name: "agy_doctor"/);
+  assert.match(source, /runAgyDoctor\(\{ cwd \}\)/);
+  assert.match(source, /preflightCwdCoverage\(\{ cwd \}\)/);
+  assert.match(source, /skip_preflight: Type\.Optional\(/);
+  assert.match(source, /role !== "researcher" && !conversationId && !params\.skip_preflight/);
+  assert.match(source, /registerResearchApplyTool\(pi\);\s*registerDoctorTool\(pi\);/);
+  const commands = await readFile(new URL("../src/commands.ts", import.meta.url), "utf8");
+  assert.match(commands, /registerCommand\("agy_research_apply"/);
+  assert.match(commands, /registerCommand\("agy_doctor"/);
+  const skill = await readFile(new URL("../skills/agy-research-apply/SKILL.md", import.meta.url), "utf8");
+  assert.match(skill, /^name: agy-research-apply$/m);
+  assert.match(skill, /agy_research_apply/);
+});

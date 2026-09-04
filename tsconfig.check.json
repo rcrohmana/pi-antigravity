@@ -1,7 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "include": [
     "src/runner.ts",
@@ -9,6 +11,9 @@
     "src/agy-settings.ts",
     "src/schemas.ts",
     "src/policy.ts",
-    "src/roles.ts"
+    "src/roles.ts",
+    "src/retry.ts",
+    "src/research-apply.ts",
+    "src/doctor.ts"
   ]
 }
