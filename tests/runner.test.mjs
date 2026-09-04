@@ -14,6 +14,7 @@ import {
   classifyDiagnostics,
   describeDeniedTool,
   formatModelVisibleResponse,
+  describeToolTarget,
   formatPermissionDenialNotice,
   killProcessTree,
   parseNdjsonLine,
@@ -1176,4 +1177,34 @@ test("the child is spawned as a process-group leader on POSIX only", async () =>
   await runAgy({ role: "scout", task: "inspect", cwd: process.cwd(), executable: FAKE_EXECUTABLE, spawnImpl: spawn });
   assert.equal(spawn.last.spawnOptions.detached, process.platform !== "win32");
   assert.equal(spawn.last.spawnOptions.shell, false);
+});
+
+// ---- UX: progress carries what Agy is doing ----
+
+test("progress carries the step index, tool name, and bounded tool target", async () => {
+  const lines = [
+    JSON.stringify({ event: "init", conversation_id: "conv-p", init: { cwd: "C:/ws" } }),
+    JSON.stringify({ event: "step_update", step_update: { step_index: 1, state: "RUNNING", step_type: "tool", tool_name: "run_command", tool_info: { name: "run_command", parameters: { CommandLine: "git   status" } } } }),
+    JSON.stringify({ event: "step_update", step_update: { step_index: 2, state: "RUNNING", step_type: "tool", tool_info: { name: "view_file", parameters: { AbsolutePath: "C:/ws/src/a.ts" } } } }),
+    JSON.stringify({ event: "step_update", step_update: { step_index: 3, state: "RUNNING", step_type: "tool", tool_name: "list_dir", tool_info: { name: "list_dir" } } }),
+    JSON.stringify({ event: "step_update", step_update: { step_index: 4, state: "DONE", step_type: "agent_response", text_delta: "done" } }),
+    JSON.stringify({ event: "result", result: { conversation_id: "conv-p", status: "SUCCESS", response: "done", duration_seconds: 0.1, num_turns: 1 } }),
+  ];
+  const spawn = spawnFixture(lines.join("\n") + "\n");
+  const progress = [];
+  await runAgy({ role: "worker", task: "t", cwd: process.cwd(), executable: FAKE_EXECUTABLE, spawnImpl: spawn, onProgress: (item) => progress.push(item) });
+  const steps = progress.filter((item) => item.event === "step_update");
+  assert.deepEqual(
+    steps.map(({ stepIndex, stepType, toolName, toolTarget, textDelta }) => ({ stepIndex, stepType, toolName, toolTarget, textDelta })),
+    [
+      { stepIndex: 1, stepType: "tool", toolName: "run_command", toolTarget: "git   status", textDelta: undefined },
+      { stepIndex: 2, stepType: "tool", toolName: "view_file", toolTarget: "C:/ws/src/a.ts", textDelta: undefined },
+      { stepIndex: 3, stepType: "tool", toolName: "list_dir", toolTarget: undefined, textDelta: undefined },
+      { stepIndex: 4, stepType: "agent_response", toolName: undefined, toolTarget: undefined, textDelta: "done" },
+    ],
+  );
+  assert.equal(describeToolTarget("read_url_content", { Url: "https://example.com/x" }), "https://example.com/x");
+  assert.equal(describeToolTarget("list_dir", undefined), undefined);
+  const bounded = describeToolTarget("run_command", { CommandLine: "x".repeat(1_000) });
+  assert.ok(bounded.length <= 301 && bounded.endsWith("…"), "long targets are bounded with an ellipsis");
 });

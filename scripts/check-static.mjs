@@ -24,7 +24,7 @@ for (const role of requiredRoles) {
   for (const [, tool] of text.matchAll(/^  - ([a-z_]+)$/gm)) assert.ok(allowedTools.has(tool), `${role}: ${tool}`);
 }
 
-const files = ["index.ts", "src/commands.ts", "src/execute-role.ts", "src/runner.ts", "src/policy.ts", "src/roles.ts", "src/schemas.ts", "src/render.ts"];
+const files = ["index.ts", "src/commands.ts", "src/execute-role.ts", "src/format.ts", "src/runner.ts", "src/policy.ts", "src/roles.ts", "src/schemas.ts", "src/render.ts"];
 for (const file of files) {
   const text = await readFile(join(root, file), "utf8");
   assert.doesNotMatch(text, /dangerously-skip-permissions/);

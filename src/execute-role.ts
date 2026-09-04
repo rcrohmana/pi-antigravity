@@ -18,6 +18,7 @@ import {
   validateFileHints,
   validateTask,
 } from "./policy.ts";
+import { formatProgress } from "./format.ts";
 import { runAgyWithDenialRetry } from "./retry.ts";
 import { ROLE_CONFIGS, type AgyRole } from "./roles.ts";
 import { formatModelVisibleResponse } from "./runner.ts";
@@ -51,16 +52,16 @@ export type RoleToolResult = { content: Array<{ type: "text"; text: string }>; d
 /** Pi status-line key used for every role. */
 export const STATUS_KEY = "pi-antigravity";
 
+/** Text-only deltas update the status line at most this often; tool and step changes always do. */
+export const PROGRESS_THROTTLE_MS = 250;
+
 /** Seams for tests; production callers pass nothing and get the real modules. */
 export interface ExecuteRoleDeps {
   runRole?: typeof runAgyWithDenialRetry;
   loadAllowedCommands?: typeof loadAllowedCommands;
   preflightCwdCoverage?: typeof preflightCwdCoverage;
-}
-
-export function formatProgress(role: AgyRole, stepType?: string, textDelta?: string): string {
-  const suffix = textDelta ? `: ${textDelta.replace(/\s+/g, " ").slice(-120)}` : "";
-  return `${role} · ${stepType ?? "working"}${suffix}`;
+  /** Clock for the elapsed time and throttle; defaults to Date.now. */
+  now?: () => number;
 }
 
 export async function executeRole(
@@ -75,6 +76,7 @@ export async function executeRole(
   const runRole = deps.runRole ?? runAgyWithDenialRetry;
   const loadCommands = deps.loadAllowedCommands ?? loadAllowedCommands;
   const preflight = deps.preflightCwdCoverage ?? preflightCwdCoverage;
+  const now = deps.now ?? Date.now;
 
   const task = validateTask(params.task);
   const context = validateContext(params.context);
@@ -123,6 +125,8 @@ export async function executeRole(
   }
 
   if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, `${role} · starting`);
+  const startedAt = now();
+  let lastTextUpdateAt = Number.NEGATIVE_INFINITY;
   try {
     // Write-capable roles get the owner's Agy command allow-rule targets as
     // advisory prompt text so the model does not probe with commands headless
@@ -144,7 +148,23 @@ export async function executeRole(
       roleLimits: ROLE_CONFIGS[role].degradation,
       signal,
       onProgress: (progress) => {
-        const text = formatProgress(role, progress.stepType, progress.textDelta);
+        const at = now();
+        // Streams of text deltas would otherwise redraw the status line on
+        // every chunk; tool calls and step changes are always shown.
+        const textOnly = Boolean(progress.textDelta) && !progress.toolName;
+        if (textOnly) {
+          if (at - lastTextUpdateAt < PROGRESS_THROTTLE_MS) return;
+          lastTextUpdateAt = at;
+        }
+        const text = formatProgress({
+          role,
+          elapsedMs: at - startedAt,
+          stepIndex: progress.stepIndex,
+          stepType: progress.stepType,
+          toolName: progress.toolName,
+          toolTarget: progress.toolTarget,
+          textDelta: progress.textDelta,
+        });
         if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, text);
         onUpdate?.({
           content: [{ type: "text", text }],

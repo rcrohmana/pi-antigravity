@@ -15,6 +15,7 @@
     "src/retry.ts",
     "src/research-apply.ts",
     "src/execute-role.ts",
+    "src/format.ts",
     "src/doctor.ts"
   ]
 }

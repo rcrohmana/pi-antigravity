@@ -47,7 +47,7 @@ function registerRoleTool(pi: ExtensionAPI, role: AgyRole): void {
       return executeRole(role, params, signal, onUpdate, ctx);
     },
     renderCall(args, theme) {
-      return renderAgyCall(args, theme);
+      return renderAgyCall({ role, task: args.task, cwd: args.cwd }, theme);
     },
     renderResult(result, options, theme) {
       return renderAgyResult(result, options, theme);
@@ -79,7 +79,7 @@ function registerResearchApplyTool(pi: ExtensionAPI): void {
       );
     },
     renderCall(args, theme) {
-      return renderAgyCall({ task: `${args.question ?? ""} → ${args.apply_task ?? ""}`, cwd: args.cwd }, theme);
+      return renderAgyCall({ role: "research_apply", task: `${args.question ?? ""} → ${args.apply_task ?? ""}`, cwd: args.cwd }, theme);
     },
     renderResult(result, options, theme) {
       return renderAgyResult(result, options, theme);
@@ -111,7 +111,7 @@ function registerDoctorTool(pi: ExtensionAPI): void {
       };
     },
     renderCall(args, theme) {
-      return renderAgyCall({ task: "doctor", cwd: args.cwd }, theme);
+      return renderAgyCall({ role: "doctor", task: "doctor", cwd: args.cwd }, theme);
     },
     renderResult(result, options, theme) {
       return renderAgyResult(result, options, theme);

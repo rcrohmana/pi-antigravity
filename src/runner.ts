@@ -28,7 +28,13 @@ const PERMISSION_ESCALATION_PATTERN = /\b(?:permission(?:\s+request)?\s+(?:denie
 export interface RunnerProgress {
   event: "init" | "step_update";
   conversationId?: string;
+  /** Agy's step counter, when present. */
+  stepIndex?: number;
   stepType?: string;
+  /** Tool being called in a tool step. */
+  toolName?: string;
+  /** Bounded primary argument of that tool (command line, path, or URL). */
+  toolTarget?: string;
   textDelta?: string;
   usage?: AgyUsage;
 }
@@ -237,6 +243,20 @@ function findPrimaryPathParam(parameters: Record<string, unknown> | undefined): 
     if (typeof value === "string" && value) return value;
   }
   return undefined;
+}
+
+/** Bounded primary argument of a tool call for progress display, or undefined when it has none. */
+export function describeToolTarget(toolName: string | undefined, parameters: Record<string, unknown> | undefined): string | undefined {
+  const summary = describeDeniedToolSummary(toolName, parameters);
+  return summary === "(no parameters)" ? undefined : summary;
+}
+
+function progressToolFields(step: AgyStepUpdatePayload): { toolName?: string; toolTarget?: string } {
+  const info = step.tool_info && typeof step.tool_info === "object" ? (step.tool_info as { name?: unknown; parameters?: unknown }) : undefined;
+  const toolName = typeof step.tool_name === "string" ? step.tool_name : typeof info?.name === "string" ? info.name : undefined;
+  if (!toolName) return {};
+  const parameters = info?.parameters && typeof info.parameters === "object" && !Array.isArray(info.parameters) ? (info.parameters as Record<string, unknown>) : undefined;
+  return { toolName, toolTarget: describeToolTarget(toolName, parameters) };
 }
 
 function describeDeniedToolSummary(toolName: string | undefined, parameters: Record<string, unknown> | undefined): string {
@@ -576,7 +596,9 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
       options.onProgress?.({
         event: "step_update",
         conversationId,
+        stepIndex: typeof step.step_index === "number" ? step.step_index : undefined,
         stepType: step.step_type,
+        ...progressToolFields(step),
         textDelta: step.text_delta,
         usage: step.usage,
       });

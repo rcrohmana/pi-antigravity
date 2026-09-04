@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { STATUS_KEY, executeRole, formatProgress } from "../src/execute-role.ts";
+import { PROGRESS_THROTTLE_MS, STATUS_KEY, executeRole } from "../src/execute-role.ts";
+import { formatProgress } from "../src/format.ts";
 import { ROLE_CONFIGS } from "../src/roles.ts";
 
 function makeCtx({ hasUI = true, confirmResult = true } = {}) {
@@ -112,22 +113,56 @@ test("a confirmed worker call reaches the runner with the role's fixed model, mo
   assert.deepEqual(updates, []);
 });
 
-test("progress is forwarded to Pi as partial RUNNING updates and mirrored to the status line", async () => {
+test("progress is forwarded to Pi as partial RUNNING updates with elapsed time, step, and tool target", async () => {
   const { ctx, statuses } = makeCtx();
+  let clock = 10_000;
   const { deps } = makeDeps({
     run: (options) => {
+      clock += 500; // 0:00
       options.onProgress({ event: "init", conversationId: "conv-2" });
-      options.onProgress({ event: "step_update", stepType: "tool", textDelta: "listing   files" });
+      clock += 61_000; // 1:01
+      options.onProgress({ event: "step_update", stepIndex: 3, stepType: "tool", toolName: "grep_search", toolTarget: "C:/ws/src   deep" });
+      clock += 1_000; // 1:02
+      options.onProgress({ event: "step_update", stepIndex: 4, stepType: "agent_response", textDelta: "listing   files" });
       return { role: "scout", cwd: options.cwd, status: "SUCCESS", response: "scout done" };
     },
   });
+  deps.now = () => clock;
   const updates = [];
   await executeRole("scout", { task: "look" }, undefined, (update) => updates.push(update), ctx, {}, deps);
-  assert.equal(updates.length, 2);
-  assert.equal(updates[0].content[0].text, formatProgress("scout", undefined, undefined));
-  assert.equal(updates[1].content[0].text, "scout · tool: listing files");
+  assert.deepEqual(
+    updates.map((update) => update.content[0].text),
+    ["scout · 0:00 · working", "scout · 1:01 · step 3 · grep_search C:/ws/src deep", "scout · 1:02 · step 4 · agent_response: listing files"],
+  );
   assert.deepEqual(updates[1].details, { role: "scout", cwd: process.cwd(), status: "RUNNING", partial: true, stepType: "tool" });
-  assert.deepEqual(statuses.map((entry) => entry.text), ["scout · starting", "scout · working", "scout · tool: listing files", undefined]);
+  assert.deepEqual(statuses.map((entry) => entry.text), ["scout · starting", ...updates.map((update) => update.content[0].text), undefined]);
+});
+
+test("text-only deltas are throttled; tool steps always get through", async () => {
+  const { ctx } = makeCtx({ hasUI: false });
+  let clock = 0;
+  const { deps } = makeDeps({
+    coverage: readOnlyCovered,
+    run: (options) => {
+      const delta = (text) => options.onProgress({ event: "step_update", stepType: "agent_response", textDelta: text });
+      delta("one"); // emitted (first)
+      clock += 50;
+      delta("two"); // dropped
+      clock += 50;
+      options.onProgress({ event: "step_update", stepType: "tool", toolName: "view_file", toolTarget: "a.ts", textDelta: "ignored" }); // emitted
+      delta("three"); // dropped (100 ms since "one")
+      clock += PROGRESS_THROTTLE_MS;
+      delta("four"); // emitted
+      return { role: "scout", cwd: options.cwd, status: "SUCCESS", response: "scout done" };
+    },
+  });
+  deps.now = () => clock;
+  const updates = [];
+  await executeRole("scout", { task: "look" }, undefined, (update) => updates.push(update), ctx, {}, deps);
+  assert.deepEqual(
+    updates.map((update) => update.content[0].text),
+    ["scout · 0:00 · agent_response: one", "scout · 0:00 · view_file a.ts", "scout · 0:00 · agent_response: four"],
+  );
 });
 
 test("read-only roles skip the write gate and never load the command policy", async () => {
@@ -245,10 +280,10 @@ test("escalation diagnostics from the runner are rendered into the model-visible
 });
 
 test("formatProgress collapses whitespace and keeps only the tail of a long delta", () => {
-  assert.equal(formatProgress("worker"), "worker · working");
-  assert.equal(formatProgress("worker", "tool"), "worker · tool");
+  assert.equal(formatProgress({ role: "worker" }), "worker · working");
+  assert.equal(formatProgress({ role: "worker", stepType: "tool" }), "worker · tool");
   const long = "a".repeat(200) + " end";
-  const text = formatProgress("worker", "text", long);
+  const text = formatProgress({ role: "worker", stepType: "text", textDelta: long });
   assert.ok(text.endsWith(" end"));
-  assert.ok(text.length <= "worker · text: ".length + 120);
+  assert.ok(text.length <= "worker · text: ".length + 80);
 });
