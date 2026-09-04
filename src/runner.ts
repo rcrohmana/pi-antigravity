@@ -18,6 +18,7 @@ import {
   boundPiOutput,
 } from "./schemas.ts";
 import { assertSupportedAgyPlatform, buildAgyChildEnv, lookupEnvironmentValue, missingRequiredWin32SourceEnvNames } from "./env.ts";
+import { formatDenialActions, formatTerminationMessage } from "./format.ts";
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1_000;
 const MAX_DIAGNOSTICS_CHARS = 16 * 1024;
@@ -337,10 +338,19 @@ export function describeDeniedTool(step: AgyStepUpdatePayload): AgyDeniedTool | 
 export function formatPermissionDenialNotice(input: {
   deniedTools: readonly AgyDeniedTool[];
   deniedActions?: readonly { action?: string; displayName?: string }[];
+  /** When known, the notice tells the user how to continue the same Agy conversation. */
+  conversationId?: string;
 }): string {
   const deniedTools = input.deniedTools ?? [];
   const deniedActions = input.deniedActions ?? [];
   const lines = ["Headless permission denial: Agy cannot prompt in this mode, so the call was auto-denied and the run stopped."];
+  // Copy-ready fix first, so it survives collapsed rendering and truncation.
+  lines.push(
+    formatDenialActions({
+      suggestedRules: deniedTools.map((tool) => tool.suggestedRule).filter((rule): rule is string => Boolean(rule)),
+      conversationId: input.conversationId,
+    }),
+  );
   if (deniedTools.length > 0) {
     for (const tool of deniedTools) {
       const reason = (tool.message ?? "permission denied").replace(/\s+/g, " ").trim();
@@ -671,8 +681,8 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
         return;
       }
       const reason = terminationReason === "timeout" ? "timeout" : "aborted";
-      const message = reason === "timeout" ? `Agy delegation exceeded ${timeoutMs}ms` : "Agy delegation was canceled";
-      rejectWith(reject, new AgyRunnerError(reason, message, { diagnostics: diagnostics.toString() }));
+      const message = formatTerminationMessage({ reason, elapsedMs: Date.now() - startedAt, timeoutMs, conversationId });
+      rejectWith(reject, new AgyRunnerError(reason, message, { diagnostics: diagnostics.toString(), conversationId }));
     };
     try {
       proc = spawnImpl(executable, args, {
@@ -749,11 +759,17 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
         return;
       }
       if (terminationReason === "aborted") {
-        rejectWith(reject, new AgyRunnerError("aborted", "Agy delegation was canceled", { diagnostics: diagnostics.toString(), exitCode: code }));
+        rejectWith(
+          reject,
+          new AgyRunnerError("aborted", formatTerminationMessage({ reason: "aborted", elapsedMs: Date.now() - startedAt, conversationId }), { diagnostics: diagnostics.toString(), exitCode: code, conversationId }),
+        );
         return;
       }
       if (terminationReason === "timeout") {
-        rejectWith(reject, new AgyRunnerError("timeout", `Agy delegation exceeded ${timeoutMs}ms`, { diagnostics: diagnostics.toString(), exitCode: code }));
+        rejectWith(
+          reject,
+          new AgyRunnerError("timeout", formatTerminationMessage({ reason: "timeout", elapsedMs: Date.now() - startedAt, timeoutMs, conversationId }), { diagnostics: diagnostics.toString(), exitCode: code, conversationId }),
+        );
         return;
       }
       if (!resultEvent) {
@@ -764,12 +780,12 @@ export async function runAgy(options: AgyRunOptions): Promise<AgyRunSummary> {
       const status = result.status;
       const stderrText = diagnostics.toString();
       const hasDeniedEvidence = deniedTools.length > 0 || deniedActions.length > 0;
-      const notice = hasDeniedEvidence ? formatPermissionDenialNotice({ deniedTools, deniedActions }) : undefined;
+      const notice = hasDeniedEvidence ? formatPermissionDenialNotice({ deniedTools, deniedActions, conversationId }) : undefined;
       // A CANCELED trajectory can end before the denied step's ERROR update is
       // streamed; the stderr line is then the only evidence of the category.
       if (deniedTools.length === 0 && deniedActions.length === 0) deniedActions = deniedActionsFromDiagnostics(stderrText);
       const denied = hasDeniedEvidence || deniedActions.length > 0 || classifyDiagnostics(stderrText || undefined);
-      const noticeText = notice ?? (deniedActions.length > 0 ? formatPermissionDenialNotice({ deniedTools, deniedActions }) : undefined);
+      const noticeText = notice ?? (deniedActions.length > 0 ? formatPermissionDenialNotice({ deniedTools, deniedActions, conversationId }) : undefined);
       if (status !== "SUCCESS") {
         if (denied) {
           rejectWith(

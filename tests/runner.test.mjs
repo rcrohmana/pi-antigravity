@@ -1208,3 +1208,58 @@ test("progress carries the step index, tool name, and bounded tool target", asyn
   const bounded = describeToolTarget("run_command", { CommandLine: "x".repeat(1_000) });
   assert.ok(bounded.length <= 301 && bounded.endsWith("…"), "long targets are bounded with an ellipsis");
 });
+
+// ---- UX: cancel/timeout messages carry elapsed time and the conversation id ----
+
+test("timeout and abort errors say the process was terminated and how to resume", async () => {
+  const initLine = JSON.stringify({ event: "init", conversation_id: "a0ecb8ba-6e92-47d2-aaa0-5a63c248ab64", init: {} }) + "\n";
+  let child;
+  const spawn = () => {
+    child = new FakeChild({ close: false });
+    queueMicrotask(() => child.stdout.emit("data", initLine));
+    return child;
+  };
+  await assert.rejects(
+    runAgy({ role: "scout", task: "wait", cwd: process.cwd(), executable: FAKE_EXECUTABLE, spawnImpl: spawn, timeoutMs: 20 }),
+    (error) => {
+      assert.equal(error.code, "timeout");
+      assert.equal(error.conversationId, "a0ecb8ba-6e92-47d2-aaa0-5a63c248ab64");
+      assert.match(error.message, /^Agy delegation exceeded 20ms \(20ms\); the Agy process was terminated\. Work so far is kept in Agy conversation a0ecb8ba; continue it with conversation_id "a0ecb8ba-6e92-47d2-aaa0-5a63c248ab64"\./);
+      return true;
+    },
+  );
+
+  const controller = new AbortController();
+  let abortChild;
+  const abortSpawn = () => {
+    abortChild = new FakeChild({ close: false });
+    return abortChild;
+  };
+  const pending = runAgy({ role: "scout", task: "wait", cwd: process.cwd(), executable: FAKE_EXECUTABLE, spawnImpl: abortSpawn, signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, (error) => {
+    assert.equal(error.code, "aborted");
+    assert.equal(error.conversationId, undefined);
+    assert.match(error.message, /^Agy delegation was canceled after \d+ms; the Agy process was terminated\. No Agy conversation id was received before it stopped, so the run cannot be resumed; start it again\./);
+    return true;
+  });
+});
+
+test("the denial notice leads with copy-ready rules and the resume instruction", () => {
+  const notice = formatPermissionDenialNotice({
+    deniedTools: [
+      { toolName: "run_command", summary: "python --version", message: "user denied permission", suggestedRule: "command(python --version)" },
+      { toolName: "view_file", summary: "C:/ws/a.ts", suggestedRule: "read_file(C:/ws)" },
+      { toolName: "run_command", summary: "python --version", suggestedRule: "command(python --version)" },
+    ],
+    conversationId: "conv-77",
+  });
+  const lines = notice.split("\n");
+  assert.equal(lines[0], "Headless permission denial: Agy cannot prompt in this mode, so the call was auto-denied and the run stopped.");
+  assert.match(lines[1], /^Add to permissions\.allow in .*settings\.json:$/);
+  assert.equal(lines[2], '  "command(python --version)"');
+  assert.equal(lines[3], '  "read_file(C:/ws)"');
+  assert.equal(lines[4], 'Next: run /agy_doctor to verify the rules, then continue this run with conversation_id "conv-77".');
+  assert.match(notice, /- run_command `python --version` -> user denied permission/);
+  assert.match(notice, /Do not disable Agy permission checks\./);
+});

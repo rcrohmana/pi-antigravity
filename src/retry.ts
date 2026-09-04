@@ -39,7 +39,7 @@ function firstAttemptFromSummary(run: AgyRunSummary): FirstAttempt {
     conversationId: run.conversationId,
     deniedTools: run.deniedTools ?? [],
     deniedActions: run.deniedActions ?? [],
-    notice: run.deniedTools?.length || run.deniedActions?.length ? formatPermissionDenialNotice({ deniedTools: run.deniedTools ?? [], deniedActions: run.deniedActions }) : undefined,
+    notice: run.deniedTools?.length || run.deniedActions?.length ? formatPermissionDenialNotice({ deniedTools: run.deniedTools ?? [], deniedActions: run.deniedActions, conversationId: run.conversationId }) : undefined,
     response: run.response,
   };
 }
@@ -50,7 +50,7 @@ function firstAttemptFromError(error: AgyRunnerError): FirstAttempt {
     conversationId: error.conversationId,
     deniedTools: error.deniedTools ?? [],
     deniedActions: error.deniedActions ?? [],
-    notice: error.deniedTools?.length || error.deniedActions?.length ? formatPermissionDenialNotice({ deniedTools: error.deniedTools ?? [], deniedActions: error.deniedActions }) : undefined,
+    notice: error.deniedTools?.length || error.deniedActions?.length ? formatPermissionDenialNotice({ deniedTools: error.deniedTools ?? [], deniedActions: error.deniedActions, conversationId: error.conversationId }) : undefined,
     response: "",
   };
 }

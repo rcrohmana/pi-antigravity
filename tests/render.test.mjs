@@ -53,3 +53,20 @@ test("partial results show the latest progress text", () => {
   const partial = { content: [{ type: "text", text: "worker · 1:42 · step 7 · run_command git status" }], details: { role: "worker", cwd: "C:/ws", status: "RUNNING", partial: true } };
   assert.equal(renderAgyResult(partial, { expanded: false, isPartial: true }, theme).text, "worker · 1:42 · step 7 · run_command git status");
 });
+
+test("composite results summarise both legs", () => {
+  const result = {
+    content: [{ type: "text", text: "## Research\n...\n## Apply\n..." }],
+    details: {
+      role: "research_apply",
+      cwd: "C:/ws",
+      status: "SUCCESS",
+      conversationId: "conv-9",
+      legs: {
+        research: { role: "researcher", cwd: "C:/ws", status: "SUCCESS", durationMs: 130_000, usage: { total_tokens: 10_000 } },
+        apply: { role: "worker", cwd: "C:/ws", status: "SUCCESS", durationMs: 48_000, usage: { total_tokens: 5_200 } },
+      },
+    },
+  };
+  assert.equal(renderAgyResult(result, { expanded: true, isPartial: false }, theme).text.split("\n")[0], "✓ research_apply · 2m 58s · research ✓ 2m 10s · apply ✓ 48s · 15.2k tokens · conv conv-9");
+});

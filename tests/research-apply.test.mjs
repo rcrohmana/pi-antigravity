@@ -88,11 +88,25 @@ test("buildResearchApplyPrompt frames the slash command and bounds oversized arg
   assert.match(oversized, /\[arguments truncated at 8000 characters\]$/);
 });
 
-test("buildResearchApplyConfirmationMessage states both legs' capabilities", () => {
+test("buildResearchApplyConfirmationMessage states both legs' capabilities and previews the request", () => {
   const message = buildResearchApplyConfirmationMessage();
   assert.match(message, /agy_researcher \(web-only, read-only\)/);
   assert.match(message, /agy_worker, which may edit files and use approved commands/);
   assert.match(message, /Continue\?$/);
+
+  const detailed = buildResearchApplyConfirmationMessage({
+    cwd: "C:\\ws",
+    question: "  Best  Vsh\nmethods? " + "q".repeat(300),
+    applyTask: "Update docs/plan.md\u0007",
+    files: ["a.md", "b.md", "c.md", "d.md"],
+  });
+  const lines = detailed.split("\n");
+  assert.equal(lines[1], "Workspace: C:\\ws");
+  assert.match(lines[2], /^Research question: Best Vsh methods\? q+…$/);
+  assert.ok(lines[2].length <= "Research question: ".length + 161);
+  assert.equal(lines[3], "Apply task: Update docs/plan.md");
+  assert.equal(lines[4], "File hints (4): a.md, b.md, c.md (+1 more)");
+  assert.equal(lines[5], "Continue?");
 });
 
 test("authorizeResearchApply denies headlessly, denies without a confirm fn, and gates on the user's answer", async () => {
@@ -153,7 +167,7 @@ test("executeResearchApply: happy path runs researcher then worker with one conf
   const confirmCalls = [];
   const ctx = makeCtx({ confirmCalls });
   const runRole = async (role, params, signal, onUpdate, passedCtx, internal) => {
-    calls.push({ role, params, passedCtx, internal });
+    calls.push({ role, params, passedCtx, internal, onUpdate });
     if (role === "researcher") {
       return fakeLegResult("researcher", { response: "Widgets are best assembled clockwise. Source: example.com" });
     }
@@ -171,8 +185,9 @@ test("executeResearchApply: happy path runs researcher then worker with one conf
   assert.equal(calls.length, 2);
   assert.equal(calls[0].role, "researcher");
   assert.equal(calls[1].role, "worker");
-  assert.equal(calls[0].internal, undefined);
-  assert.equal(calls[1].internal.skipWriteGate, true);
+  assert.deepEqual(calls[0].internal, { progressLabel: "1/2 researcher" });
+  assert.deepEqual(calls[1].internal, { skipWriteGate: true, progressLabel: "2/2 worker" });
+  assert.equal(calls[0].onUpdate, undefined, "leg updates pass straight through (no text prefix)");
   assert.equal(calls[0].params.files, undefined);
   assert.deepEqual(calls[1].params.files, ["docs/plan.md"]);
   assert.match(calls[1].params.context, /^Research brief from agy_researcher/);
@@ -290,4 +305,38 @@ test("executeResearchApply: an out-of-workspace file hint fails before the confi
   );
   assert.deepEqual(calls, []);
   assert.deepEqual(confirmCalls, []);
+});
+
+test("executeResearchApply: the single confirmation previews workspace, question, apply task, and hints", async () => {
+  const confirmCalls = [];
+  const ctx = makeCtx({ confirmCalls });
+  const runRole = async (role) => fakeLegResult(role, { response: `${role} ok` });
+  await executeResearchApply(
+    { question: "How are widgets assembled?", apply_task: "Update docs/plan.md.", files: ["docs/plan.md"] },
+    undefined,
+    undefined,
+    ctx,
+    runRole,
+  );
+  assert.equal(confirmCalls.length, 1);
+  const lines = confirmCalls[0].message.split("\n");
+  assert.equal(lines[1], `Workspace: ${process.cwd()}`);
+  assert.equal(lines[2], "Research question: How are widgets assembled?");
+  assert.equal(lines[3], "Apply task: Update docs/plan.md.");
+  assert.equal(lines[4], "File hints (1): docs/plan.md");
+  assert.equal(lines.at(-1), "Continue?");
+});
+
+test("executeResearchApply: leg progress updates reach Pi unchanged", async () => {
+  const ctx = makeCtx();
+  const updates = [];
+  const runRole = async (role, params, signal, onUpdate) => {
+    onUpdate?.({ content: [{ type: "text", text: `${role === "researcher" ? "1/2 researcher" : "2/2 worker"} · 0:01 · step 1 · tool` }], details: { role, cwd: "C:/ws", status: "RUNNING", partial: true } });
+    return fakeLegResult(role, { response: `${role} ok` });
+  };
+  await executeResearchApply({ question: "q", apply_task: "apply" }, undefined, (update) => updates.push(update), ctx, runRole);
+  assert.deepEqual(
+    updates.map((update) => update.content[0].text),
+    ["1/2 researcher · 0:01 · step 1 · tool", "2/2 worker · 0:01 · step 1 · tool"],
+  );
 });

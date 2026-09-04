@@ -32,7 +32,7 @@ test("role routes have explicit read/write capability boundaries", async () => {
   assert.match(source, /import \{ executeRole, roleParameters, type RoleParameters \} from "\.\/src\/execute-role\.ts"/);
   assert.match(source, /return executeRole\(role, params, signal, onUpdate, ctx\);/);
   assert.doesNotMatch(source, /authorizeWriteRole|runAgyWithDenialRetry|loadAllowedCommands|preflightCwdCoverage/);
-  assert.match(roleSource, /authorizeWriteRole\(role, \{ cwd, task, context, files \}/);
+  assert.match(roleSource, /authorizeWriteRole\(role, \{ cwd, task, context, files, allowedCommands: [^}]*writeCoverage \}/);
   assert.match(roleSource, /authorizeResearchContext/);
   assert.match(roleSource, /const loadCommands = deps\.loadAllowedCommands \?\? loadAllowedCommands;/);
   assert.match(roleSource, /allowedCommands: /);
@@ -118,7 +118,8 @@ test("composite research-apply and doctor tools are registered with a cwd prefli
   assert.match(source, /name: "agy_research_apply"/);
   assert.match(source, /executeResearchApply\(params, signal, onUpdate, ctx,/);
   assert.match(source, /executeRole\(role, legParams, legSignal, legUpdate, legCtx, internal\)/);
-  assert.match(roleSource, /internal: \{ skipWriteGate\?: boolean \} = \{\}/);
+  assert.match(roleSource, /internal: ExecuteRoleInternal = \{\}/);
+  assert.match(roleSource, /skipWriteGate\?: boolean;\s*\/\*\*[^*]*\*\/\s*progressLabel\?: string;/);
   assert.match(roleSource, /internal\.skipWriteGate && ctx\.hasUI/);
   assert.match(source, /name: "agy_doctor"/);
   assert.match(source, /runAgyDoctor\(\{ cwd \}\)/);

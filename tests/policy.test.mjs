@@ -16,12 +16,14 @@ import {
   validateTask,
 } from "../src/policy.ts";
 
-test("write confirmation is compact but still discloses its capabilities", async () => {
+test("write confirmation discloses the role, workspace, task, hints, allowed commands, and write coverage", async () => {
   const request = {
     cwd: "C:\\workspace\\canonical-child",
     task: "Update the selected file only.",
     context: "The API must retain the existing response shape.",
     files: ["C:\\workspace\\src\\target.ts", "C:\\workspace\\tests\\target.test.ts"],
+    allowedCommands: ["git status", "npm test"],
+    writeCoverage: "covered",
   };
   let confirmations = 0;
   let confirmationTitle = "";
@@ -38,15 +40,41 @@ test("write confirmation is compact but still discloses its capabilities", async
   assert.deepEqual(allowed, { allowed: true });
   assert.equal(confirmations, 1);
   assert.equal(confirmationTitle, "Allow Agy worker writes?");
-  assert.equal(confirmationMessage, "Agy worker may edit files and use approved commands. Continue?");
-  assert.doesNotMatch(confirmationMessage, /workspace|selected file|API must retain/i);
   assert.equal(
-    buildWriteConfirmationMessage("delegate", {
-      cwd: "C:\\workspace",
-      task: `start-${"x".repeat(MAX_CONFIRMATION_TASK_CHARS)}-end`,
-    }),
-    "Agy delegate may edit files and use approved commands. Continue?",
+    confirmationMessage,
+    [
+      "Agy worker may edit files and run approved commands in:",
+      "  C:\\workspace\\canonical-child",
+      "Task (30 characters): Update the selected file only.",
+      "File hints (2): C:\\workspace\\src\\target.ts, C:\\workspace\\tests\\target.test.ts",
+      "Explicit context: 48 characters from the parent",
+      "Commands allowed by Agy settings (2): git status, npm test",
+      "Continue?",
+    ].join("\n"),
   );
+  // The context body itself is never shown; only its size.
+  assert.doesNotMatch(confirmationMessage, /API must retain/);
+
+  // Long tasks are previewed (bounded, sanitized, single line); lists are capped.
+  const long = buildWriteConfirmationMessage("delegate", {
+    cwd: "C:\\workspace",
+    task: `start-${"x".repeat(MAX_CONFIRMATION_TASK_CHARS)}\u0007-end\nsecond line`,
+    files: ["a", "b", "c", "d", "e"],
+    allowedCommands: [],
+    writeCoverage: "uncovered",
+  });
+  assert.match(long, /^Agy delegate may edit files and run approved commands in:\n  C:\\workspace\n/);
+  assert.match(long, /Task \(1023 characters\): start-x+ \[preview truncated: 1023 characters total\] x*\\u0007-end second line\n/);
+  assert.match(long, /File hints \(5\): a, b, c \(\+2 more\)\n/);
+  assert.match(long, /Commands: none allowed by Agy settings \(run_command is auto-denied\)\n/);
+  assert.match(long, /Writes: no write_file\(\.\.\.\) rule covers this workspace; every write will be auto-denied\nContinue\?$/);
+  assert.ok(long.split("\n").length <= 8, "the dialog stays short");
+
+  const unknown = buildWriteConfirmationMessage("worker", { cwd: "C:\\workspace", task: "x", writeCoverage: "unknown" });
+  assert.match(unknown, /Commands: Agy settings unreadable; the role is told to run no commands\n/);
+  assert.match(unknown, /Writes: coverage not checked \(Agy settings unreadable\)\n/);
+  const minimal = buildWriteConfirmationMessage("worker", { cwd: "C:\\workspace", task: "x" });
+  assert.equal(minimal, "Agy worker may edit files and run approved commands in:\n  C:\\workspace\nTask (1 characters): x\nCommands: Agy settings unreadable; the role is told to run no commands\nContinue?");
 
   const rejected = await authorizeWriteRole("delegate", request, { hasUI: false });
   assert.equal(rejected.allowed, false);

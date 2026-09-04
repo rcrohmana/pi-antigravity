@@ -23,6 +23,10 @@ export interface WriteGateRequest {
   task: string;
   context?: string;
   files?: readonly string[];
+  /** Command allow-rule targets the parent read from Agy settings; undefined when settings were unreadable. */
+  allowedCommands?: readonly string[];
+  /** Whether a write_file(...) rule covers cwd: "covered", "uncovered", or "unknown" (settings unreadable or not checked). */
+  writeCoverage?: "covered" | "uncovered" | "unknown";
 }
 
 export interface ResearchContextGateRequest {
@@ -33,13 +37,43 @@ export interface ResearchContextGateRequest {
 
 export const MAX_CONFIRMATION_TASK_CHARS = 1_000;
 const MAX_CONFIRMATION_CONTEXT_CHARS = 500;
+/** The write confirmation is a short dialog: task preview and list lengths are kept small. */
+export const MAX_WRITE_CONFIRMATION_TASK_CHARS = 200;
+const MAX_WRITE_CONFIRMATION_LIST_ITEMS = 3;
+
+function boundedList(items: readonly string[], maxItems: number): string {
+  const shown = items.slice(0, maxItems).map((item) => item.replace(/\s+/g, " ").trim().slice(0, 80));
+  const rest = items.length - shown.length;
+  return rest > 0 ? `${shown.join(", ")} (+${rest} more)` : shown.join(", ");
+}
 
 export function roleCanWrite(role: AgyRole): role is Extract<AgyRole, "worker" | "delegate"> {
   return role === "worker" || role === "delegate";
 }
 
-export function buildWriteConfirmationMessage(role: Extract<AgyRole, "worker" | "delegate">, _request: WriteGateRequest): string {
-  return `Agy ${role} may edit files and use approved commands. Continue?`;
+/**
+ * What the user is approving, in one short dialog: the role's capability,
+ * the workspace, a bounded task preview, file hints, which commands Agy's
+ * own rules will let it run, and whether writes are even covered. Task and
+ * hint text are model-supplied, so they are sanitized and bounded like the
+ * researcher-context preview.
+ */
+export function buildWriteConfirmationMessage(role: Extract<AgyRole, "worker" | "delegate">, request: WriteGateRequest): string {
+  const lines = [`Agy ${role} may edit files and run approved commands in:`, `  ${request.cwd}`];
+  lines.push(`Task (${request.task.length} characters): ${boundedConfirmationPreview(request.task, MAX_WRITE_CONFIRMATION_TASK_CHARS).replace(/\n/g, " ")}`);
+  if (request.files?.length) lines.push(`File hints (${request.files.length}): ${boundedList(request.files, MAX_WRITE_CONFIRMATION_LIST_ITEMS)}`);
+  if (request.context) lines.push(`Explicit context: ${request.context.length} characters from the parent`);
+  if (request.allowedCommands === undefined) {
+    lines.push("Commands: Agy settings unreadable; the role is told to run no commands");
+  } else if (request.allowedCommands.length === 0) {
+    lines.push("Commands: none allowed by Agy settings (run_command is auto-denied)");
+  } else {
+    lines.push(`Commands allowed by Agy settings (${request.allowedCommands.length}): ${boundedList(request.allowedCommands, MAX_WRITE_CONFIRMATION_LIST_ITEMS)}`);
+  }
+  if (request.writeCoverage === "uncovered") lines.push("Writes: no write_file(...) rule covers this workspace; every write will be auto-denied");
+  else if (request.writeCoverage === "unknown") lines.push("Writes: coverage not checked (Agy settings unreadable)");
+  lines.push("Continue?");
+  return lines.join("\n");
 }
 
 export async function authorizeWriteRole(role: AgyRole, request: WriteGateRequest, ui: ConfirmationUI): Promise<GateDecision> {

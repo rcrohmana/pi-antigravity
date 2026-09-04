@@ -114,12 +114,27 @@ export function buildResearchApplyPrompt(args: string): string {
   );
 }
 
-export function buildResearchApplyConfirmationMessage(): string {
-  return "Agy research_apply runs agy_researcher (web-only, read-only) and then agy_worker, which may edit files and use approved commands. Continue?";
+const MAX_RESEARCH_APPLY_PREVIEW_CHARS = 160;
+
+function preview(value: string): string {
+  const collapsed = value.replace(/[\x00-\x1f\x7f-\x9f]+/g, " ").replace(/\s+/g, " ").trim();
+  return collapsed.length > MAX_RESEARCH_APPLY_PREVIEW_CHARS ? `${collapsed.slice(0, MAX_RESEARCH_APPLY_PREVIEW_CHARS)}…` : collapsed;
+}
+
+export function buildResearchApplyConfirmationMessage(request?: { cwd?: string; question: string; applyTask: string; files?: readonly string[] }): string {
+  const lines = ["Agy research_apply runs agy_researcher (web-only, read-only) and then agy_worker, which may edit files and use approved commands."];
+  if (request) {
+    if (request.cwd) lines.push(`Workspace: ${request.cwd}`);
+    lines.push(`Research question: ${preview(request.question)}`);
+    lines.push(`Apply task: ${preview(request.applyTask)}`);
+    if (request.files?.length) lines.push(`File hints (${request.files.length}): ${request.files.slice(0, 3).join(", ")}${request.files.length > 3 ? ` (+${request.files.length - 3} more)` : ""}`);
+  }
+  lines.push("Continue?");
+  return lines.join("\n");
 }
 
 /** Single up-front Pi UI confirmation for the whole research-then-apply flow; mirrors authorizeWriteRole. */
-export async function authorizeResearchApply(ui: ConfirmationUI): Promise<GateDecision> {
+export async function authorizeResearchApply(ui: ConfirmationUI, request?: { cwd?: string; question: string; applyTask: string; files?: readonly string[] }): Promise<GateDecision> {
   if (!ui.hasUI) {
     return {
       allowed: false,
@@ -129,7 +144,7 @@ export async function authorizeResearchApply(ui: ConfirmationUI): Promise<GateDe
   if (!ui.confirm) {
     return { allowed: false, reason: "Pi reported a UI but did not provide a confirmation function" };
   }
-  const approved = await ui.confirm("Allow Agy research_apply?", buildResearchApplyConfirmationMessage());
+  const approved = await ui.confirm("Allow Agy research_apply?", buildResearchApplyConfirmationMessage(request));
   return approved
     ? { allowed: true }
     : { allowed: false, reason: "Agy research_apply delegation rejected by the user" };
@@ -143,23 +158,8 @@ export interface RoleRunner {
     signal: AbortSignal | undefined,
     onUpdate: ((update: AgentToolResult<AgyToolDetails>) => void) | undefined,
     ctx: ExtensionContext,
-    internal?: { skipWriteGate?: boolean },
+    internal?: { skipWriteGate?: boolean; progressLabel?: string },
   ): Promise<{ content: Array<{ type: "text"; text: string }>; details: AgyToolDetails }>;
-}
-
-function wrapUpdate(
-  prefix: "research" | "apply",
-  onUpdate: ((update: AgentToolResult<AgyToolDetails>) => void) | undefined,
-): ((update: AgentToolResult<AgyToolDetails>) => void) | undefined {
-  if (!onUpdate) return undefined;
-  return (update) => {
-    onUpdate({
-      ...update,
-      content: update.content?.map((item) =>
-        item.type === "text" ? { ...item, text: `${prefix} · ${item.text}` } : item,
-      ),
-    } as AgentToolResult<AgyToolDetails>);
-  };
 }
 
 function firstText(content: Array<{ type: "text"; text: string }>): string {
@@ -189,18 +189,22 @@ export async function executeResearchApply(
   const cwd = await validateCwd(params.cwd, ctx.cwd, [ctx.cwd]);
   const files = validateFileHints(params.files, cwd);
 
-  const gate = await authorizeResearchApply({
-    hasUI: ctx.hasUI,
-    confirm: ctx.hasUI ? ctx.ui.confirm.bind(ctx.ui) : undefined,
-  });
+  const gate = await authorizeResearchApply(
+    {
+      hasUI: ctx.hasUI,
+      confirm: ctx.hasUI ? ctx.ui.confirm.bind(ctx.ui) : undefined,
+    },
+    { cwd, question, applyTask, files },
+  );
   if (!gate.allowed) throw new Error(gate.reason ?? "Agy research_apply denied by policy");
 
   const research = await runRole(
     "researcher",
     { task: buildResearchTask(question), cwd: params.cwd, timeout_ms: params.timeout_ms },
     signal,
-    wrapUpdate("research", onUpdate),
+    onUpdate,
     ctx,
+    { progressLabel: "1/2 researcher" },
   );
   const researchText = firstText(research.content);
 
@@ -233,9 +237,9 @@ export async function executeResearchApply(
         auto_retry: params.auto_retry,
       },
       signal,
-      wrapUpdate("apply", onUpdate),
+      onUpdate,
       ctx,
-      { skipWriteGate: true },
+      { skipWriteGate: true, progressLabel: "2/2 worker" },
     );
   } catch (error) {
     const preservedBrief = boundText(researchText, 8_000, "[research brief truncated at 8000 characters]");

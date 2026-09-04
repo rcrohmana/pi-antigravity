@@ -18,7 +18,7 @@ import {
   validateFileHints,
   validateTask,
 } from "./policy.ts";
-import { formatProgress } from "./format.ts";
+import { formatProgress, formatReadyNotice } from "./format.ts";
 import { runAgyWithDenialRetry } from "./retry.ts";
 import { ROLE_CONFIGS, type AgyRole } from "./roles.ts";
 import { formatModelVisibleResponse } from "./runner.ts";
@@ -55,6 +55,14 @@ export const STATUS_KEY = "pi-antigravity";
 /** Text-only deltas update the status line at most this often; tool and step changes always do. */
 export const PROGRESS_THROTTLE_MS = 250;
 
+/** Workspaces already announced as ready in this Pi process (item 8: one positive notice per session). */
+const announcedReadyCwds = new Set<string>();
+
+/** Test seam: forget which workspaces were announced. */
+export function resetReadyAnnouncements(): void {
+  announcedReadyCwds.clear();
+}
+
 /** Seams for tests; production callers pass nothing and get the real modules. */
 export interface ExecuteRoleDeps {
   runRole?: typeof runAgyWithDenialRetry;
@@ -64,13 +72,20 @@ export interface ExecuteRoleDeps {
   now?: () => number;
 }
 
+/** Caller-only options: the composite tool's one-gate seam and its phase label for progress. */
+export interface ExecuteRoleInternal {
+  skipWriteGate?: boolean;
+  /** Replaces the bare role name in progress text, e.g. "1/2 researcher". */
+  progressLabel?: string;
+}
+
 export async function executeRole(
   role: AgyRole,
   params: RoleParameters,
   signal: AbortSignal | undefined,
   onUpdate: ((update: RoleToolUpdate) => void) | undefined,
   ctx: ExtensionContext,
-  internal: { skipWriteGate?: boolean } = {},
+  internal: ExecuteRoleInternal = {},
   deps: ExecuteRoleDeps = {},
 ): Promise<RoleToolResult> {
   const runRole = deps.runRole ?? runAgyWithDenialRetry;
@@ -92,8 +107,27 @@ export async function executeRole(
   // Advisory only when settings are unreadable; skip_preflight is the escape
   // hatch for rules the parent cannot see (shared config, project grants).
   let preflightNotice: string | undefined;
+  let writeCoverage: "covered" | "uncovered" | "unknown" | undefined;
+  let readyNotice: string | undefined;
+  // Write-capable roles get the owner's Agy command allow-rule targets as
+  // advisory prompt text so the model does not probe with commands headless
+  // Agy would auto-deny (e.g. `python --version`); read-only roles never
+  // call run_command, so no policy is loaded or sent for them. Loaded before
+  // the gate so the confirmation can show what the role will be allowed to run.
+  const commandPolicy = ROLE_CONFIGS[role].readOnly ? undefined : await loadCommands();
   if (role !== "researcher" && !conversationId && !params.skip_preflight) {
     const coverage = await preflight({ cwd });
+    if (coverage.source === "settings") writeCoverage = coverage.writeCoveringRule ? "covered" : "uncovered";
+    else writeCoverage = "unknown";
+    if (coverage.source === "settings" && coverage.readCoveringRule && !announcedReadyCwds.has(cwd)) {
+      readyNotice = formatReadyNotice({
+        cwd,
+        readRule: coverage.readCoveringRule,
+        writeRule: coverage.writeCoveringRule,
+        readOnlyRole: ROLE_CONFIGS[role].readOnly,
+        commandCount: commandPolicy?.source === "settings" ? commandPolicy.commands.length : undefined,
+      });
+    }
     if (coverage.source === "settings" && !coverage.readCoveringRule) {
       throw new Error(
         `Agy preflight: no read_file(...) allow rule in Agy settings covers ${cwd}; headless Agy would auto-deny every local file tool for ${role}. ` +
@@ -110,7 +144,7 @@ export async function executeRole(
   // combined confirmation for this same role in this same call; it never
   // bypasses the headless denial (hasUI is still required by the composite gate).
   if (!(internal.skipWriteGate && ctx.hasUI)) {
-    const gate = await authorizeWriteRole(role, { cwd, task, context, files }, {
+    const gate = await authorizeWriteRole(role, { cwd, task, context, files, allowedCommands: commandPolicy?.source === "settings" ? commandPolicy.commands : undefined, writeCoverage }, {
       hasUI: ctx.hasUI,
       confirm: ctx.hasUI ? ctx.ui.confirm.bind(ctx.ui) : undefined,
     });
@@ -124,15 +158,18 @@ export async function executeRole(
     if (!researchGate.allowed) throw new Error(researchGate.reason ?? "Agy researcher context delegation denied by policy");
   }
 
-  if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, `${role} · starting`);
+  // The positive readiness line is shown once per workspace per session,
+  // only after the gates passed (so a declined confirmation shows nothing).
+  if (readyNotice && ctx.hasUI) {
+    announcedReadyCwds.add(cwd);
+    ctx.ui.notify(readyNotice, "info");
+  }
+
+  const progressLabel = internal.progressLabel ?? role;
+  if (ctx.hasUI) ctx.ui.setStatus(STATUS_KEY, `${progressLabel} · starting`);
   const startedAt = now();
   let lastTextUpdateAt = Number.NEGATIVE_INFINITY;
   try {
-    // Write-capable roles get the owner's Agy command allow-rule targets as
-    // advisory prompt text so the model does not probe with commands headless
-    // Agy would auto-deny (e.g. `python --version`); read-only roles never
-    // call run_command, so no policy is loaded or sent for them.
-    const commandPolicy = ROLE_CONFIGS[role].readOnly ? undefined : await loadCommands();
     const run = await runRole({
       autoRetry: params.auto_retry !== false,
       role,
@@ -157,7 +194,7 @@ export async function executeRole(
           lastTextUpdateAt = at;
         }
         const text = formatProgress({
-          role,
+          role: progressLabel,
           elapsedMs: at - startedAt,
           stepIndex: progress.stepIndex,
           stepType: progress.stepType,

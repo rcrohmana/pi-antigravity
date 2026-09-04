@@ -1,7 +1,7 @@
 import { Text } from "@earendil-works/pi-tui";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 
-import { describeRoleCapability, formatResultSummary } from "./format.ts";
+import { describeRoleCapability, formatCompositeResultSummary, formatResultSummary } from "./format.ts";
 import type { AgyToolDetails } from "./schemas.ts";
 
 export function renderAgyCall(
@@ -37,7 +37,7 @@ export function renderAgyResult(
     return new Text(theme.fg("error", `✗ ${message}`), 0, 0);
   }
   const response = result.content?.find((item) => item.type === "text")?.text?.trim() ?? "(empty response)";
-  const summary = formatResultSummary(details);
+  const summary = details?.legs ? formatCompositeResultSummary(details) : formatResultSummary(details);
   const body = options.expanded ? `${summary}\n${response}` : `${summary}: ${response.replace(/\s+/g, " ").slice(0, 300)}`;
   return new Text(theme.fg(details?.escalationRequired ? "warning" : "success", body), 0, 0);
 }

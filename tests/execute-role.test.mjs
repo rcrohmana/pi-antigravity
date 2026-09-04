@@ -4,13 +4,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PROGRESS_THROTTLE_MS, STATUS_KEY, executeRole } from "../src/execute-role.ts";
+import { PROGRESS_THROTTLE_MS, STATUS_KEY, executeRole, resetReadyAnnouncements } from "../src/execute-role.ts";
 import { formatProgress } from "../src/format.ts";
 import { ROLE_CONFIGS } from "../src/roles.ts";
 
 function makeCtx({ hasUI = true, confirmResult = true } = {}) {
   const confirms = [];
   const statuses = [];
+  const notifications = [];
   return {
     ctx: {
       cwd: process.cwd(),
@@ -21,12 +22,16 @@ function makeCtx({ hasUI = true, confirmResult = true } = {}) {
           return confirmResult;
         },
         setStatus: (key, text) => statuses.push({ key, text }),
+        notify: (text, level) => notifications.push({ text, level }),
       },
     },
     confirms,
     statuses,
+    notifications,
   };
 }
+
+test.beforeEach(() => resetReadyAnnouncements());
 
 const covered = { source: "settings", readCoveringRule: "read_file(C:/ws)", writeCoveringRule: "write_file(C:/ws)" };
 const readOnlyCovered = { source: "settings", readCoveringRule: "read_file(C:/ws)" };
@@ -53,13 +58,14 @@ function makeDeps({ coverage = covered, commands = { source: "settings", command
   return { deps, calls };
 }
 
-test("worker is denied headlessly before any spawn, settings read, or status change", async () => {
-  const { ctx, confirms, statuses } = makeCtx({ hasUI: false });
+test("worker is denied headlessly before any spawn or status change", async () => {
+  const { ctx, confirms, statuses, notifications } = makeCtx({ hasUI: false });
   const { deps, calls } = makeDeps();
   await assert.rejects(executeRole("worker", { task: "edit" }, undefined, undefined, ctx, {}, deps), /denied when Pi has no interactive UI/);
   assert.equal(calls.runRole.length, 0);
-  assert.equal(calls.loadAllowedCommands, 0);
+  assert.equal(calls.loadAllowedCommands, 1, "settings are read before the gate so the confirmation can show them");
   assert.equal(calls.preflight.length, 1, "preflight runs before the gate");
+  assert.deepEqual(notifications, [], "no ready notice without a UI");
   assert.deepEqual(confirms, []);
   assert.deepEqual(statuses, []);
 });
@@ -71,6 +77,82 @@ test("a rejected write confirmation stops the call before the runner", async () 
   assert.equal(confirms.length, 1);
   assert.equal(confirms[0].title, "Allow Agy delegate writes?");
   assert.equal(calls.runRole.length, 0);
+});
+
+test("the write confirmation shows the allowed commands and write coverage the parent found", async () => {
+  const { ctx, confirms } = makeCtx();
+  const covered = makeDeps();
+  await executeRole("worker", { task: "edit plan", files: ["docs/plan.md"] }, undefined, undefined, ctx, {}, covered.deps);
+  assert.match(confirms[0].message, new RegExp(`^Agy worker may edit files and run approved commands in:\\n  ${process.cwd().replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}\\n`));
+  assert.match(confirms[0].message, /Task \(9 characters\): edit plan\n/);
+  assert.match(confirms[0].message, /File hints \(1\): docs\/plan\.md\n/);
+  assert.match(confirms[0].message, /Commands allowed by Agy settings \(1\): git status\n/);
+  assert.doesNotMatch(confirms[0].message, /Writes:/);
+
+  const noWrite = makeDeps({ coverage: readOnlyCovered, commands: { source: "unavailable", reason: "ENOENT" } });
+  await executeRole("worker", { task: "edit" }, undefined, undefined, ctx, {}, noWrite.deps);
+  assert.match(confirms[1].message, /Commands: Agy settings unreadable; the role is told to run no commands\n/);
+  assert.match(confirms[1].message, /Writes: no write_file\(\.\.\.\) rule covers this workspace; every write will be auto-denied\n/);
+
+  const unknown = makeDeps({ coverage: unavailable });
+  await executeRole("worker", { task: "edit" }, undefined, undefined, ctx, {}, unknown.deps);
+  assert.match(confirms[2].message, /Writes: coverage not checked \(Agy settings unreadable\)\n/);
+
+  const resumed = makeDeps({ coverage: uncovered });
+  await executeRole("worker", { task: "edit", conversation_id: "conv-9" }, undefined, undefined, ctx, {}, resumed.deps);
+  assert.doesNotMatch(confirms[3].message, /Writes:/, "no coverage line when the preflight was skipped");
+});
+
+test("the ready notice is shown once per workspace, only after the gates passed", async () => {
+  const declined = makeCtx({ confirmResult: false });
+  await assert.rejects(executeRole("worker", { task: "edit" }, undefined, undefined, declined.ctx, {}, makeDeps().deps), /rejected by the user/);
+  assert.deepEqual(declined.notifications, [], "a declined confirmation announces nothing");
+
+  const { ctx, notifications } = makeCtx();
+  await executeRole("worker", { task: "edit" }, undefined, undefined, ctx, {}, makeDeps().deps);
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].level, "info");
+  assert.equal(
+    notifications[0].text,
+    `✓ Agy ready for ${process.cwd()}: read_file(C:/ws) (read) and write_file(C:/ws) (write) cover this workspace; 1 command allowed`,
+  );
+  await executeRole("scout", { task: "look" }, undefined, undefined, ctx, {}, makeDeps({ coverage: readOnlyCovered }).deps);
+  await executeRole("worker", { task: "edit again" }, undefined, undefined, ctx, {}, makeDeps().deps);
+  assert.equal(notifications.length, 1, "announced once per workspace per session");
+
+  resetReadyAnnouncements();
+  const scoutFirst = makeCtx();
+  await executeRole("scout", { task: "look" }, undefined, undefined, scoutFirst.ctx, {}, makeDeps({ coverage: readOnlyCovered }).deps);
+  assert.equal(scoutFirst.notifications[0].text, `✓ Agy ready for ${process.cwd()}: read_file(C:/ws) (read) cover this workspace`);
+
+  resetReadyAnnouncements();
+  const uncoveredWrites = makeCtx();
+  await executeRole("delegate", { task: "edit" }, undefined, undefined, uncoveredWrites.ctx, {}, makeDeps({ coverage: readOnlyCovered, commands: { source: "settings", commands: [] } }).deps);
+  assert.equal(
+    uncoveredWrites.notifications[0].text,
+    `✓ Agy ready for ${process.cwd()}: read_file(C:/ws) (read) cover this workspace; no write_file rule (writes will be auto-denied); no commands allowed`,
+  );
+
+  resetReadyAnnouncements();
+  const unavailableSettings = makeCtx();
+  await executeRole("worker", { task: "edit" }, undefined, undefined, unavailableSettings.ctx, {}, makeDeps({ coverage: unavailable }).deps);
+  assert.deepEqual(unavailableSettings.notifications, [], "nothing positive to say when settings are unreadable");
+});
+
+test("a progress label from the composite tool replaces the role in status and progress text", async () => {
+  const { ctx, statuses } = makeCtx();
+  const { deps } = makeDeps({
+    run: (options) => {
+      options.onProgress({ event: "step_update", stepIndex: 1, stepType: "tool", toolName: "search_web", toolTarget: "vsh methods" });
+      return { role: "researcher", cwd: options.cwd, status: "SUCCESS", response: "brief" };
+    },
+  });
+  deps.now = () => 0;
+  const updates = [];
+  await executeRole("researcher", { task: "find" }, undefined, (update) => updates.push(update), ctx, { progressLabel: "1/2 researcher" }, deps);
+  assert.equal(statuses[0].text, "1/2 researcher · starting");
+  assert.equal(updates[0].content[0].text, "1/2 researcher · 0:00 · step 1 · search_web vsh methods");
+  assert.equal(updates[0].details.role, "researcher", "details keep the real role");
 });
 
 test("a confirmed worker call reaches the runner with the role's fixed model, mode, policy, and limits", async () => {

@@ -96,3 +96,60 @@ test("formatResultSummary shows duration, turns, tokens, retry marker, and short
   assert.equal(formatResultSummary({ role: "worker", status: "SUCCESS", cwd: "C:/ws", durationMs: 250, numTurns: 1, usage: { total_tokens: 14 }, conversationId: "conv-123" }), "✓ worker · 250ms · 1 turn · 14 tokens · conv conv-123");
   assert.equal(formatResultSummary({ role: "scout", status: "SUCCESS", cwd: "C:/ws", escalationRequired: true, durationMs: 3_000 }), "⚠ scout · 3s");
 });
+
+test("formatCompositeResultSummary lists both legs with total duration and tokens", async () => {
+  const { formatCompositeResultSummary } = await import("../src/format.ts");
+  const legs = {
+    research: { role: "researcher", cwd: "C:/ws", status: "SUCCESS", durationMs: 130_000, usage: { total_tokens: 10_000 } },
+    apply: { role: "worker", cwd: "C:/ws", status: "SUCCESS", durationMs: 48_000, usage: { total_tokens: 5_200 }, retry: { attempted: true } },
+  };
+  assert.equal(
+    formatCompositeResultSummary({ role: "research_apply", status: "SUCCESS", cwd: "C:/ws", legs, conversationId: "a0ecb8ba-6e92-47d2-aaa0-5a63c248ab64" }),
+    "✓ research_apply · 2m 58s · research ✓ 2m 10s · apply ✓ 48s · 15.2k tokens · ↻ retried once · conv a0ecb8ba",
+  );
+  assert.equal(
+    formatCompositeResultSummary({ role: "research_apply", status: "SUCCESS", cwd: "C:/ws", escalationRequired: true, legs: { research: { role: "researcher", cwd: "C:/ws", status: "SUCCESS", escalationRequired: true, durationMs: 9_000 } } }),
+    "⚠ research_apply · 9s · research ⚠ 9s",
+  );
+  assert.equal(formatCompositeResultSummary({ role: "research_apply", status: "SUCCESS", cwd: "C:/ws", legs: { research: { role: "researcher", cwd: "C:/ws", status: "CANCELED" } } }), "✓ research_apply · research ✗");
+  assert.equal(formatCompositeResultSummary({ role: "worker", status: "SUCCESS", cwd: "C:/ws", durationMs: 250 }), "✓ worker · 250ms");
+});
+
+test("formatDenialActions gives copy-ready rules, deduplicated, then the next step", async () => {
+  const { formatDenialActions } = await import("../src/format.ts");
+  assert.equal(
+    formatDenialActions({ suggestedRules: ["command(git status)", "command(git status)", " ", "read_file(C:/ws)"], conversationId: "conv-1", platform: "win32" }),
+    'Add to permissions.allow in %USERPROFILE%\\.gemini\\antigravity-cli\\settings.json:\n  "command(git status)"\n  "read_file(C:/ws)"\nNext: run /agy_doctor to verify the rules, then continue this run with conversation_id "conv-1".',
+  );
+  assert.equal(
+    formatDenialActions({ suggestedRules: [], platform: "linux" }),
+    "Add a matching allow rule to permissions.allow in ~/.gemini/antigravity-cli/settings.json (see the denial details below).\nNext: run /agy_doctor to verify the rules.",
+  );
+});
+
+test("formatTerminationMessage explains timeout and cancel with a resume hint", async () => {
+  const { formatTerminationMessage } = await import("../src/format.ts");
+  assert.equal(
+    formatTerminationMessage({ reason: "timeout", elapsedMs: 300_400, timeoutMs: 300_000, conversationId: "conv-1" }),
+    'Agy delegation exceeded 300000ms (5m 00s); the Agy process was terminated. Work so far is kept in Agy conversation conv-1; continue it with conversation_id "conv-1".',
+  );
+  assert.equal(
+    formatTerminationMessage({ reason: "aborted", elapsedMs: 62_000 }),
+    "Agy delegation was canceled after 1m 02s; the Agy process was terminated. No Agy conversation id was received before it stopped, so the run cannot be resumed; start it again.",
+  );
+  assert.match(formatTerminationMessage({ reason: "aborted" }), /^Agy delegation was canceled; the Agy process was terminated\./);
+});
+
+test("formatReadyNotice states the covering rules and command count", async () => {
+  const { formatReadyNotice } = await import("../src/format.ts");
+  assert.equal(
+    formatReadyNotice({ cwd: "C:/ws", readRule: "read_file(C:/)", writeRule: "write_file(C:/)", readOnlyRole: false, commandCount: 3 }),
+    "✓ Agy ready for C:/ws: read_file(C:/) (read) and write_file(C:/) (write) cover this workspace; 3 commands allowed",
+  );
+  assert.equal(formatReadyNotice({ cwd: "C:/ws", readRule: "read_file(C:/)", writeRule: "write_file(C:/)", readOnlyRole: true, commandCount: 3 }), "✓ Agy ready for C:/ws: read_file(C:/) (read) cover this workspace");
+  assert.equal(
+    formatReadyNotice({ cwd: "C:/ws", readRule: "read_file(C:/)", readOnlyRole: false, commandCount: 0 }),
+    "✓ Agy ready for C:/ws: read_file(C:/) (read) cover this workspace; no write_file rule (writes will be auto-denied); no commands allowed",
+  );
+  assert.equal(formatReadyNotice({ cwd: "C:/ws", readRule: "read_file(C:/)", writeRule: "write_file(C:/)", readOnlyRole: false }), "✓ Agy ready for C:/ws: read_file(C:/) (read) and write_file(C:/) (write) cover this workspace");
+});
