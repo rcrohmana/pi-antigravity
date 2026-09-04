@@ -1,6 +1,6 @@
 {
   "name": "pi-antigravity",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Pi tools for bounded delegation to the official Google Antigravity CLI",
   "license": "MIT",
   "type": "module",

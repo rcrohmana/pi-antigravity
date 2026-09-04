@@ -1,7 +1,7 @@
 # pi-antigravity
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
-![Version](https://img.shields.io/badge/version-0.1.4-green)
+![Version](https://img.shields.io/badge/version-0.1.5-green)
 ![Pi extension](https://img.shields.io/badge/pi-extension-8A2BE2)
 
 Pi extension for bounded delegation to the official Google Antigravity CLI (`agy`). It exposes six explicit tools: `agy_worker`, `agy_scout`, `agy_delegate`, `agy_researcher`, `agy_research_apply`, and `agy_doctor`.
