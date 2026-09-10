@@ -3,6 +3,14 @@
   "version": "0.1.5",
   "description": "Pi tools for bounded delegation to the official Google Antigravity CLI",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rcrohmana/pi-antigravity.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rcrohmana/pi-antigravity/issues"
+  },
+  "homepage": "https://github.com/rcrohmana/pi-antigravity#readme",
   "type": "module",
   "main": "./index.ts",
   "files": [
