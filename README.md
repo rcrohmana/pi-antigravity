@@ -69,9 +69,10 @@ pi -e https://github.com/rcrohmana/pi-antigravity
 
 Prerequisites:
 
-1. Google Antigravity CLI (`agy`) installed and logged in.
-2. The bundled Agy role plugin installed: run `scripts/install-agy-plugin.ps1 -ConfirmInstall` (or `agy plugin install <path-to-agy-plugin>`).
-3. Agy permissions configured per `docs/permissions.md` (headless allow/deny rules for the files, URLs, and commands your roles need).
+1. Node.js 22.19.0 or newer.
+2. Google Antigravity CLI (`agy`) installed and logged in.
+3. The bundled Agy role plugin installed: run `scripts/install-agy-plugin.ps1 -ConfirmInstall` (or `agy plugin install <path-to-agy-plugin>`).
+4. Agy permissions configured per `docs/permissions.md` (headless allow/deny rules for the files, URLs, and commands your roles need).
 
 ## Safety boundary
 
